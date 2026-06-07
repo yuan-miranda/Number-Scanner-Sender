@@ -6,11 +6,12 @@ from PIL import Image
 
 load_dotenv()
 client = genai.Client(api_key=os.getenv("API_KEY"))
-image = Image.open('image.png')
+image = Image.open('2.jpg')
 image.thumbnail((768, 768))
 
 response = client.models.generate_content(
     model="gemini-3.5-flash",
+    # model="gemini-3.1-flash-lite",
     contents=image,
     config=types.GenerateContentConfig(
         system_instruction=(
@@ -27,6 +28,20 @@ response = client.models.generate_content(
         ),
         temperature=0.0,
         response_mime_type="application/json",
+        response_schema=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                "nh": types.Schema(type=types.Type.STRING, nullable=True),
+                "kakao": types.Schema(type=types.Type.STRING, nullable=True),
+                "kfcc": types.Schema(type=types.Type.STRING, nullable=True),
+                "shinhan": types.Schema(type=types.Type.STRING, nullable=True),
+                "woori": types.Schema(type=types.Type.STRING, nullable=True),
+            },
+            required=["nh", "kakao", "kfcc", "shinhan", "woori"],
+        ),
+        # thinking_config=types.ThinkingConfig(
+        #     thinking_level=types.ThinkingLevel.MINIMAL
+        # ),
     ),
 )
 

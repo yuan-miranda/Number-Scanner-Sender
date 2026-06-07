@@ -2,3 +2,5 @@
 /venv
 *.session
 *.pt
+*.png
+*.jpg
