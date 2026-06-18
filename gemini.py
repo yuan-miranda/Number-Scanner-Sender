@@ -10,7 +10,7 @@ load_dotenv()
 def get_extracted_otps():
     try:
         client = genai.Client(api_key=os.getenv("API_KEY"))
-        image = Image.open('2.jpg')
+        image = Image.open('1.jpg')
         image.thumbnail((768, 768))
 
         response = client.models.generate_content(

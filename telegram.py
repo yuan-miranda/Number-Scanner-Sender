@@ -1,6 +1,7 @@
 import asyncio
 import os
 import httpx
+import cv2
 from dotenv import load_dotenv
 from telethon import TelegramClient, events
 from gemini import get_extracted_otps
@@ -12,7 +13,6 @@ esp32_ip = os.getenv("ESP32_IP")
 
 client = TelegramClient("login", api_id, api_hash)
 
-# Create a global lock to enforce one-at-a-time processing
 processing_lock = asyncio.Lock()
 
 async def trigger_servo(servo_number):
@@ -45,16 +45,21 @@ async def handle_otp_requests(event):
     }
 
     if text in key_mapping:
-        # This line forces subsequent messages to wait until the current one is entirely done
         async with processing_lock:
-            print(f"Received Chat Command: '{text}' (Lock Acquired)")
+            print(f"Request: '{text}'")
             
             target_key = key_mapping[text]
             target_servo = servo_mapping[text]
             
             await trigger_servo(target_servo)
-            await asyncio.sleep(1.0)
+            await asyncio.sleep(2.0)
             
+            cam = cv2.VideoCapture(0)
+            ret, frame = cam.read()
+            if ret:
+                cv2.imwrite("1.jpg", frame)
+            cam.release()
+
             otp_data = get_extracted_otps()
             
             reply_text = "null"
@@ -63,7 +68,7 @@ async def handle_otp_requests(event):
                 if extracted_code:
                     reply_text = str(extracted_code).strip()
 
-            print(f"Sending Reply: '{reply_text}' (Lock Released)\n")
+            print(f"Reply: '{reply_text}'")
             await client.send_message(event.chat_id, reply_text)
 
 print("Telegram listener started...")
