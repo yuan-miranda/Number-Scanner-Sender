@@ -2,8 +2,8 @@
 #include <WebServer.h>
 #include <WiFi.h>
 
-const char *ssid = "WhiteHouse";
-const char *password = "PLDTWIFIPv54q";
+const char *ssid = "TP-Link_Extender";
+const char *password = "VILLAROSA1225!";
 
 WebServer server(80);
 Servo servos[5];
@@ -16,7 +16,13 @@ void handleActivate() {
       int index = servoNum - 1;
       Serial.print("Moving Servo ");
       Serial.println(servoNum);
-      servos[index].write(180);
+
+      if (index == 4) {
+        servos[index].write(167);
+      } else {
+        servos[index].write(180);
+      }
+
       delay(500);
       servos[index].write(0);
       server.send(200, "text/plain", "OK");
