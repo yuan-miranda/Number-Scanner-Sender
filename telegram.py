@@ -1,7 +1,3 @@
-# CHANGE ME IF THE CAMERA ARE SWAPPED (1, 2)
-CAMERA_LEFT = 1
-CAMERA_RIGHT = 2
-
 import asyncio
 import os
 from datetime import datetime
@@ -15,10 +11,15 @@ load_dotenv()
 api_id = os.getenv("API_ID")
 api_hash = os.getenv("API_HASH")
 esp32_ip = os.getenv("ESP32_IP")
+camera_left = int(os.getenv("CAMERA_LEFT", 0))
+camera_right = int(os.getenv("CAMERA_RIGHT", 1))
 
 client = TelegramClient("login", api_id, api_hash)
 
 processing_lock = asyncio.Lock()
+
+CAMERA_LEFT = camera_left
+CAMERA_RIGHT = camera_right
 
 
 async def trigger_servo(servo_number):
@@ -100,7 +101,7 @@ async def handle_otp_requests(event):
 
             log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             print(f"{log_time} replying '{reply_text}' from {target_key}")
-            
+
             await client.send_message(event.chat_id, reply_text)
 
 
