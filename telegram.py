@@ -62,8 +62,6 @@ async def handle_otp_requests(event):
 
     if text in key_mapping:
         async with processing_lock:
-            print(f"Request: '{text}'")
-
             target_key = key_mapping[text]
             target_servo = servo_mapping[text]
 
@@ -82,14 +80,11 @@ async def handle_otp_requests(event):
             ret, frame = cam.read()
 
             os.makedirs("captures", exist_ok=True)
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            image_path = f"captures/{timestamp}.jpg"
+            image_path = "captures/latest.jpg"
 
             if ret:
                 cv2.imwrite(image_path, frame)
-                print(f"Saved snapshot to {image_path}")
             else:
-                print("Failed to capture image from camera.")
                 image_path = None
             cam.release()
 
@@ -103,7 +98,9 @@ async def handle_otp_requests(event):
                 if extracted_code:
                     reply_text = str(extracted_code).strip()
 
-            print(f"Reply: '{reply_text}'")
+            log_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            print(f"{log_time} replying '{reply_text}' from {target_key}")
+            
             await client.send_message(event.chat_id, reply_text)
 
 
