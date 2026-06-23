@@ -1,6 +1,8 @@
 import asyncio
+import logging
 import os
 import json
+import re
 import threading
 import time
 import cv2
@@ -20,12 +22,29 @@ from telethon import TelegramClient, events
 
 load_dotenv()
 
+# ── silence noisy Werkzeug routes ────────────────────────────────────────────
+
+
+class SilenceRoutes(logging.Filter):
+    SILENT = ("/captures/latest.jpg", "/video_feed/")
+
+    def filter(self, record):
+        msg = record.getMessage()
+        return not any(route in msg for route in self.SILENT)
+
+
+logging.getLogger("werkzeug").addFilter(SilenceRoutes())
+
+# ── app setup ─────────────────────────────────────────────────────────────────
+
 app = Flask(__name__)
 ESP32_IP = os.getenv("ESP32_IP")
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "angles": {"1": 180, "2": 180, "3": 180, "4": 180, "5": 180},
+    "servo_durations": {"1": 500, "2": 500, "3": 500, "4": 500, "5": 500},
     "cameras": {"left": 0, "right": 1},
+    "capture_delay_ms": 1000,
 }
 
 
@@ -36,6 +55,12 @@ def load_config():
                 data = json.load(f)
                 if "angles" not in data:
                     return DEFAULT_CONFIG.copy()
+                for key, val in DEFAULT_CONFIG.items():
+                    if key not in data:
+                        data[key] = val
+                for servo_id in ["1", "2", "3", "4", "5"]:
+                    if servo_id not in data["servo_durations"]:
+                        data["servo_durations"][servo_id] = 500
                 return data
         except Exception:
             pass
@@ -55,8 +80,11 @@ def save_config(config_dict):
 app_config = load_config()
 
 
+# ── camera manager ────────────────────────────────────────────────────────────
+
+
 class CameraManager:
-    """Runs cameras in a background thread so web and telegram can share them without crashing."""
+    """Runs cameras in a background thread so web and telegram can share them."""
 
     def __init__(self):
         self.cameras = {}
@@ -66,20 +94,42 @@ class CameraManager:
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.thread.start()
 
-    def validate_camera(self, cam_id):
-        """Checks if a camera hardware exists and can be opened."""
+    def open_camera(self, cam_id):
+        """Open a camera and start capturing from it. Returns True on success."""
         cam_id = int(cam_id)
         with self.lock:
             if cam_id in self.cameras:
-                return self.cameras[cam_id].isOpened()
+                if self.cameras[cam_id].isOpened():
+                    return True
+                self.cameras[cam_id].release()
+                del self.cameras[cam_id]
 
             cap = cv2.VideoCapture(cam_id)
             if cap.isOpened():
                 self.cameras[cam_id] = cap
                 return True
-
             cap.release()
             return False
+
+    def release_camera(self, cam_id):
+        """Release a camera and stop capturing from it."""
+        cam_id = int(cam_id)
+        with self.lock:
+            if cam_id in self.cameras:
+                self.cameras[cam_id].release()
+                del self.cameras[cam_id]
+            self.latest_frames.pop(cam_id, None)
+
+    def validate_camera(self, cam_id):
+        """Check if camera exists without permanently opening it."""
+        cam_id = int(cam_id)
+        with self.lock:
+            if cam_id in self.cameras:
+                return self.cameras[cam_id].isOpened()
+        cap = cv2.VideoCapture(cam_id)
+        ok = cap.isOpened()
+        cap.release()
+        return ok
 
     def get_frame(self, cam_id):
         cam_id = int(cam_id)
@@ -90,14 +140,19 @@ class CameraManager:
                     self.cameras[cam_id] = cap
         return self.latest_frames.get(cam_id)
 
+    def is_open(self, cam_id):
+        cam_id = int(cam_id)
+        with self.lock:
+            return cam_id in self.cameras and self.cameras[cam_id].isOpened()
+
     def _capture_loop(self):
         while self.running:
             with self.lock:
                 cam_ids = list(self.cameras.keys())
-
             for cam_id in cam_ids:
-                cap = self.cameras[cam_id]
-                if cap.isOpened():
+                with self.lock:
+                    cap = self.cameras.get(cam_id)
+                if cap and cap.isOpened():
                     ret, frame = cap.read()
                     if ret:
                         self.latest_frames[cam_id] = frame
@@ -105,6 +160,13 @@ class CameraManager:
 
 
 cam_manager = CameraManager()
+
+for _side in ["left", "right"]:
+    _cam_id = app_config["cameras"].get(_side, 0)
+    cam_manager.open_camera(_cam_id)
+
+
+# ── flask routes ──────────────────────────────────────────────────────────────
 
 
 @app.route("/")
@@ -129,6 +191,29 @@ def set_angle():
     return jsonify({"status": "error"}), 400
 
 
+@app.route("/set_servo_duration", methods=["POST"])
+def set_servo_duration():
+    data = request.get_json()
+    servo = str(data.get("servo"))
+    duration = int(data.get("duration"))
+    if servo in ["1", "2", "3", "4", "5"] and 0 <= duration <= 10000:
+        app_config["servo_durations"][servo] = duration
+        save_config(app_config)
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "error"}), 400
+
+
+@app.route("/set_capture_delay", methods=["POST"])
+def set_capture_delay():
+    data = request.get_json()
+    delay = int(data.get("delay_ms", 1000))
+    if 0 <= delay <= 30000:
+        app_config["capture_delay_ms"] = delay
+        save_config(app_config)
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "error"}), 400
+
+
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
@@ -136,18 +221,25 @@ def set_camera():
     cam_id = int(data.get("cam_id"))
 
     if side in ["left", "right"] and cam_id >= 0:
-        if not cam_manager.validate_camera(cam_id):
+        if not cam_manager.open_camera(cam_id):
             return (
                 jsonify(
                     {"status": "error", "message": f"Camera ID {cam_id} not found."}
                 ),
                 400,
             )
-
         app_config["cameras"][side] = cam_id
         save_config(app_config)
         return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "Invalid input"}), 400
+
+
+@app.route("/release_camera", methods=["POST"])
+def release_camera():
+    data = request.get_json()
+    cam_id = int(data.get("cam_id"))
+    cam_manager.release_camera(cam_id)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/get_config")
@@ -160,10 +252,13 @@ def fire_servo():
     servo = request.args.get("servo")
     angle = request.args.get("angle")
     reset_angle = request.args.get("reset_angle", "0")
-    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}"
+    duration = request.args.get(
+        "duration", app_config["servo_durations"].get(str(servo), 500)
+    )
+    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}&duration={duration}"
     try:
         with httpx.Client() as client:
-            resp = client.get(url, timeout=5.0)
+            resp = client.get(url, timeout=10.0)
             return jsonify({"status": "ok", "esp32_status": resp.status_code})
     except Exception as e:
         return jsonify({"status": "error", "message": str(e)}), 500
@@ -171,6 +266,8 @@ def fire_servo():
 
 def gen_frames(camera_id):
     while True:
+        if not cam_manager.is_open(camera_id):
+            break
         frame = cam_manager.get_frame(camera_id)
         if frame is not None:
             ret, buffer = cv2.imencode(".jpg", frame)
@@ -185,33 +282,55 @@ def gen_frames(camera_id):
 
 @app.route("/video_feed/<camera_id>")
 def video_feed(camera_id):
-    if not cam_manager.validate_camera(camera_id):
-        return "Camera offline", 404
-
+    if not cam_manager.is_open(camera_id):
+        if not cam_manager.open_camera(camera_id):
+            return "Camera offline", 404
     return Response(
-        gen_frames(camera_id), mimetype="multipart/x-mixed-replace; boundary=frame"
+        gen_frames(int(camera_id)), mimetype="multipart/x-mixed-replace; boundary=frame"
     )
 
 
-key_mapping = {
-    "sh": "shinhan",
-    "shinhan": "shinhan",
-    "woori": "woori",
-    "wr": "woori",
-    "kfcc": "kfcc",
-    "nh": "nh",
-    "kakao": "kakao",
-}
+# ── token matching ────────────────────────────────────────────────────────────
 
-servo_mapping = {
-    "shinhan": 1,
-    "sh": 1,
-    "kfcc": 2,
-    "kakao": 3,
-    "woori": 4,
-    "wr": 4,
-    "nh": 5,
-}
+# Each token: canonical key (used for OTP lookup), servo number, camera side
+TOKENS = [
+    {"key": "shinhan", "servo": 1, "camera": "right"},
+    {"key": "kfcc", "servo": 2, "camera": "right"},
+    {"key": "kakao", "servo": 3, "camera": "left"},
+    {"key": "woori", "servo": 4, "camera": "right"},
+    {"key": "nh", "servo": 5, "camera": "left"},
+]
+
+TYPO_BUDGET = 3  # message can be at most this many chars longer than the token name
+
+
+def match_token(message):
+    """
+    Return the matching token dict or None.
+
+    Rules:
+    - Strip punctuation/whitespace, compare lowercase.
+    - Reject anything with more than 2 words (sentence guard).
+    - Token name must appear as a substring of the cleaned message.
+    - Cleaned message must not be more than TYPO_BUDGET chars longer than
+      the token name (prevents "shinhan" matching token "nh").
+    """
+    msg = message.strip().lower()
+
+    if len(msg.split()) > 2:
+        return None
+
+    clean = re.sub(r"[^a-z]", "", msg)
+
+    for token in TOKENS:
+        name = token["key"]
+        if name in clean and len(clean) <= len(name) + TYPO_BUDGET:
+            return token
+
+    return None
+
+
+# ── telegram ──────────────────────────────────────────────────────────────────
 
 processing_lock = None
 tg_client = TelegramClient("login", os.getenv("API_ID"), os.getenv("API_HASH"))
@@ -219,10 +338,11 @@ tg_client = TelegramClient("login", os.getenv("API_ID"), os.getenv("API_HASH"))
 
 async def trigger_servo(servo_number):
     angle = app_config["angles"].get(str(servo_number), 180)
-    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}&reset_angle=0"
+    duration = app_config["servo_durations"].get(str(servo_number), 500)
+    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}&reset_angle=0&duration={duration}"
     async with httpx.AsyncClient() as http_client:
         try:
-            response = await http_client.get(url, timeout=5.0)
+            response = await http_client.get(url, timeout=10.0)
             return response.status_code == 200
         except Exception:
             pass
@@ -234,23 +354,17 @@ async def handle_otp_requests(event):
     if event.out:
         return
 
-    text = event.raw_text.strip().lower()
-    if text not in key_mapping:
+    token = match_token(event.raw_text)
+    if token is None:
         return
 
     async with processing_lock:
-        target_key = key_mapping[text]
-        target_servo = servo_mapping[text]
+        await trigger_servo(token["servo"])
 
-        await trigger_servo(target_servo)
-        await asyncio.sleep(1.0)
+        capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
+        await asyncio.sleep(capture_delay_s)
 
-        camera_index = (
-            int(app_config["cameras"]["left"])
-            if target_servo in [3, 5]
-            else int(app_config["cameras"]["right"])
-        )
-
+        camera_index = int(app_config["cameras"][token["camera"]])
         frame = cam_manager.get_frame(camera_index)
 
         os.makedirs("captures", exist_ok=True)
@@ -262,11 +376,11 @@ async def handle_otp_requests(event):
 
         otp_data = get_extracted_otps(image_path) if image_path else None
         reply_text = "null"
-        if otp_data and target_key in otp_data and otp_data[target_key]:
-            reply_text = str(otp_data[target_key]).strip()
+        if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
+            reply_text = str(otp_data[token["key"]]).strip()
 
         print(
-            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {target_key}"
+            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {token['key']}"
         )
         await tg_client.send_message(event.chat_id, reply_text)
 
@@ -283,6 +397,8 @@ def start_telegram_thread():
     asyncio.set_event_loop(loop)
     loop.run_until_complete(run_telegram())
 
+
+# ── entry point ───────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     os.makedirs("captures", exist_ok=True)

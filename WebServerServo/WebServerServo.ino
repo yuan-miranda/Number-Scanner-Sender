@@ -15,18 +15,14 @@ void handleActivate() {
     int angle = server.arg("angle").toInt();
     int resetAngle =
         server.hasArg("reset_angle") ? server.arg("reset_angle").toInt() : 0;
+    int duration =
+        server.hasArg("duration") ? server.arg("duration").toInt() : 500;
 
     if (servoNum >= 1 && servoNum <= 5) {
       int index = servoNum - 1;
-      Serial.print("Moving Servo ");
-      Serial.print(servoNum);
-      Serial.print(" to ");
-      Serial.println(angle);
-
       servos[index].write(angle);
-      delay(500);
+      delay(duration);
       servos[index].write(resetAngle);
-
       server.send(200, "text/plain", "OK");
       return;
     }

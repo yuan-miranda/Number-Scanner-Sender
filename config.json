@@ -9,5 +9,13 @@
     "cameras": {
         "left": 0,
         "right": 0
-    }
+    },
+    "servo_durations": {
+        "1": 500,
+        "2": 500,
+        "3": 500,
+        "4": 500,
+        "5": 500
+    },
+    "capture_delay_ms": 1000
 }

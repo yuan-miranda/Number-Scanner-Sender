@@ -4,3 +4,5 @@
 *.session-journal
 *.pt
 __pycache__
+config.json
+latest.jpg
