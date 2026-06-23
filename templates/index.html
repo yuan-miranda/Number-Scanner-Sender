@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OTP Token Rig Controller</title>
+    <style>
+        :root {
+            --bg-color: #f0f2f5;
+            --card-bg: #ffffff;
+            --primary: #007bff;
+            --text-main: #333;
+            --text-muted: #6c757d;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: var(--bg-color);
+            color: var(--text-main);
+        }
+
+        .dashboard-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            margin: 0 auto;
+            align-items: stretch;
+        }
+
+        .panel-left {
+            flex: 0 0 300px;
+            background: var(--card-bg);
+            padding: 16px;
+            border-radius: 4px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+            display: flex;
+            flex-direction: column;
+            align-items: stretch;
+        }
+
+        .panel-left h2 {
+            margin-top: 0;
+            font-size: 1.2rem;
+            margin-bottom: 12px;
+        }
+
+        #servo-container {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .servo-group {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 7px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .servo-group:last-child {
+            border-bottom: none;
+        }
+
+        .servo-name {
+            font-weight: 600;
+            font-size: 14px;
+            width: 100px;
+        }
+
+        .servo-controls {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+        }
+
+        input[type="number"] {
+            width: 60px;
+            padding: 5px 6px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 13px;
+            font-family: inherit;
+            -moz-appearance: textfield;
+            transition: border-color 0.15s;
+        }
+
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        input[type="number"].invalid {
+            border-color: #dc3545;
+            background: #fff5f5;
+        }
+
+        button {
+            padding: 5px 12px;
+            cursor: pointer;
+            border: 1px solid #ced4da;
+            border-radius: 4px;
+            font-weight: 600;
+            font-size: 13px;
+            font-family: inherit;
+            transition: all 0.2s;
+        }
+
+        .btn-test {
+            background: #e9ecef;
+            color: #495057;
+            border-color: #ced4da;
+        }
+
+        .btn-test:hover {
+            background: #dee2e6;
+            border-color: #adb5bd;
+        }
+
+        .panel-right {
+            flex: 1;
+            min-width: 0;
+        }
+
+        .grid-2x2 {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 8px;
+        }
+
+        .stream-box {
+            background: #000;
+            border-radius: 4px;
+            overflow: hidden;
+            position: relative;
+            aspect-ratio: 4 / 3;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        .stream-header {
+            background: rgba(0, 0, 0, 0.7);
+            color: white;
+            padding: 6px 10px;
+            font-size: 13px;
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 10;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .stream-box img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            background-color: #222;
+        }
+
+        .stream-btn {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 3px 8px;
+            font-size: 11px;
+            border-radius: 4px;
+            color: white;
+            font-weight: 500;
+            border: none;
+            cursor: pointer;
+            white-space: nowrap;
+            transition: background 0.15s;
+        }
+
+        .stream-btn:hover {
+            background: rgba(255, 255, 255, 0.35);
+        }
+
+        .stream-btn.closed {
+            background: rgba(220, 53, 69, 0.5);
+        }
+
+        .stream-btn.closed:hover {
+            background: rgba(220, 53, 69, 0.7);
+        }
+
+        .cam-offline-overlay {
+            display: none;
+            position: absolute;
+            inset: 0;
+            background: #111;
+            align-items: center;
+            justify-content: center;
+            color: #555;
+            font-size: 13px;
+        }
+
+        .cam-offline-overlay.visible {
+            display: flex;
+        }
+
+        .empty-slot {
+            aspect-ratio: 4 / 3;
+        }
+
+        @media (max-width: 900px) {
+            .dashboard-container {
+                flex-direction: column;
+            }
+
+            .panel-left {
+                flex: none;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="dashboard-container">
+        <div class="panel-left">
+            <h2>Servo Controls</h2>
+            <div id="servo-container">Loading...</div>
+
+            <h2 style="margin-top: 24px;">Camera Config</h2>
+            <div class="servo-group">
+                <div class="servo-name">Camera Left</div>
+                <div class="servo-controls">
+                    <input type="number" id="cam-left-input" min="0">
+                    <button class="btn-test" onclick="saveCamera('left')">Set</button>
+                </div>
+            </div>
+            <div class="servo-group">
+                <div class="servo-name">Camera Right</div>
+                <div class="servo-controls">
+                    <input type="number" id="cam-right-input" min="0">
+                    <button class="btn-test" onclick="saveCamera('right')">Set</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="panel-right">
+            <div class="grid-2x2">
+                <div class="stream-box" id="box-cam-left">
+                    <div class="stream-header">
+                        <span id="label-cam-left">Camera Left (ID: -)</span>
+                        <button class="stream-btn" id="btn-cam-left"
+                            onclick="toggleCamera('cam-left', 'left', this)">Close</button>
+                    </div>
+                    <img id="img-cam-left" src=""
+                        onerror="this.src='https://placehold.co/600x450/222/FFF?text=Camera+Offline'">
+                    <div class="cam-offline-overlay" id="overlay-cam-left">Camera closed</div>
+                </div>
+
+                <div class="stream-box" id="box-cam-right">
+                    <div class="stream-header">
+                        <span id="label-cam-right">Camera Right (ID: -)</span>
+                        <button class="stream-btn" id="btn-cam-right"
+                            onclick="toggleCamera('cam-right', 'right', this)">Close</button>
+                    </div>
+                    <img id="img-cam-right" src=""
+                        onerror="this.src='https://placehold.co/600x450/222/FFF?text=Camera+Offline'">
+                    <div class="cam-offline-overlay" id="overlay-cam-right">Camera closed</div>
+                </div>
+
+                <div class="stream-box">
+                    <div class="stream-header">
+                        <span>Latest Capture</span>
+                        <button class="stream-btn" onclick="reloadCapture()">↻ Reload</button>
+                    </div>
+                    <img src="/captures/latest.jpg" id="latest-img"
+                        onerror="this.src='https://placehold.co/600x450/222/FFF?text=No+Capture+Yet'">
+                </div>
+
+                <div class="empty-slot"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const tokens = [
+            { id: 1, name: "Shinhan" },
+            { id: 2, name: "KFCC" },
+            { id: 3, name: "Kakao" },
+            { id: 4, name: "Woori" },
+            { id: 5, name: "NH" }
+        ];
+
+        const container = document.getElementById('servo-container');
+        let globalCameras = { left: 0, right: 1 };
+        const camState = {};
+
+        function isValid(val) {
+            const n = Number(val);
+            return Number.isInteger(n) && n >= 1 && n <= 180;
+        }
+
+        async function initConfig() {
+            try {
+                const res = await fetch('/get_config');
+                const data = await res.json();
+
+                globalCameras = data.cameras;
+                document.getElementById('cam-left-input').value = globalCameras.left;
+                document.getElementById('cam-right-input').value = globalCameras.right;
+                document.getElementById('label-cam-left').textContent = `Camera Left (ID: ${globalCameras.left})`;
+                document.getElementById('label-cam-right').textContent = `Camera Right (ID: ${globalCameras.right})`;
+                document.getElementById('img-cam-left').src = `/video_feed/${globalCameras.left}`;
+                document.getElementById('img-cam-right').src = `/video_feed/${globalCameras.right}`;
+
+                container.innerHTML = '';
+                tokens.forEach(t => {
+                    const savedAngle = data.angles[t.id] || 180;
+                    const div = document.createElement('div');
+                    div.className = 'servo-group';
+                    div.innerHTML = `
+                        <div class="servo-name">${t.name}</div>
+                        <div class="servo-controls">
+                            <input type="number" id="act-${t.id}" value="${savedAngle}" min="1" max="180">
+                            <button class="btn-test" onclick="testServo(${t.id})">Test</button>
+                        </div>
+                    `;
+                    container.appendChild(div);
+
+                    const input = document.getElementById(`act-${t.id}`);
+                    input.addEventListener('input', (e) => {
+                        input.classList.toggle('invalid', !isValid(e.target.value));
+                    });
+                    input.addEventListener('change', (e) => {
+                        let val = Number(e.target.value);
+                        if (!isValid(val)) {
+                            val = Math.min(180, Math.max(1, val || 1));
+                            input.value = val;
+                            input.classList.remove('invalid');
+                        }
+                        saveAngleToServer(t.id, val);
+                        triggerServo(t.id, val);
+                    });
+                });
+            } catch (error) {
+                container.innerHTML = '<div style="color:red">Failed to load configuration.</div>';
+            }
+        }
+
+        function saveAngleToServer(id, angle) {
+            fetch('/set_angle', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ servo: id, angle: angle })
+            });
+        }
+
+        function saveCamera(side) {
+            const inputVal = document.getElementById(`cam-${side}-input`).value;
+            if (inputVal === '') return;
+            const camId = Number(inputVal);
+
+            fetch('/set_camera', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ side: side, cam_id: camId })
+            }).then(() => {
+                globalCameras[side] = camId;
+                document.getElementById(`label-cam-${side}`).textContent = `Camera ${side === 'left' ? 'Left' : 'Right'} (ID: ${camId})`;
+                const img = document.getElementById(`img-cam-${side}`);
+                const btn = document.getElementById(`btn-cam-${side}`);
+                const overlay = document.getElementById(`overlay-cam-${side}`);
+
+                img.src = `/video_feed/${camId}?t=${Date.now()}`;
+                overlay.classList.remove('visible');
+                btn.textContent = 'Close';
+                btn.classList.remove('closed');
+                camState[`cam-${side}`] = true;
+            });
+        }
+
+        function toggleCamera(key, side, btn) {
+            const img = document.getElementById(`img-${key}`);
+            const overlay = document.getElementById(`overlay-${key}`);
+            const isOpen = camState[key] !== false;
+
+            if (isOpen) {
+                img.src = '';
+                overlay.classList.add('visible');
+                btn.textContent = 'Open';
+                btn.classList.add('closed');
+                camState[key] = false;
+            } else {
+                img.src = `/video_feed/${globalCameras[side]}?t=${Date.now()}`;
+                overlay.classList.remove('visible');
+                btn.textContent = 'Close';
+                btn.classList.remove('closed');
+                camState[key] = true;
+            }
+        }
+
+        function reloadCapture() {
+            document.getElementById('latest-img').src = '/captures/latest.jpg?' + new Date().getTime();
+        }
+
+        function triggerServo(id, angle) {
+            fetch(`/fire_servo?servo=${id}&angle=${angle}&reset_angle=0`);
+        }
+
+        function testServo(id) {
+            const val = document.getElementById(`act-${id}`).value;
+            if (isValid(val)) triggerServo(id, val);
+        }
+
+        initConfig();
+    </script>
+</body>
+
+</html>

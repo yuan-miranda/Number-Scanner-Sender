@@ -10,26 +10,28 @@ Servo servos[5];
 const int servoPins[5] = {4, 13, 14, 25, 26};
 
 void handleActivate() {
-  if (server.hasArg("servo")) {
+  if (server.hasArg("servo") && server.hasArg("angle")) {
     int servoNum = server.arg("servo").toInt();
+    int angle = server.arg("angle").toInt();
+    int resetAngle =
+        server.hasArg("reset_angle") ? server.arg("reset_angle").toInt() : 0;
+
     if (servoNum >= 1 && servoNum <= 5) {
       int index = servoNum - 1;
       Serial.print("Moving Servo ");
-      Serial.println(servoNum);
+      Serial.print(servoNum);
+      Serial.print(" to ");
+      Serial.println(angle);
 
-      if (index == 4) {
-        servos[index].write(167);
-      } else {
-        servos[index].write(180);
-      }
-
+      servos[index].write(angle);
       delay(500);
-      servos[index].write(0);
+      servos[index].write(resetAngle);
+
       server.send(200, "text/plain", "OK");
       return;
     }
   }
-  server.send(400, "text/plain", "Invalid Servo");
+  server.send(400, "text/plain", "Invalid Request Parameters");
 }
 
 void setup() {
