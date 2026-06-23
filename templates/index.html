@@ -368,7 +368,13 @@
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ side: side, cam_id: camId })
-            }).then(() => {
+            }).then(async res => {
+                if (!res.ok) {
+                    const err = await res.json();
+                    document.getElementById(`img-cam-${side}`).src = "invalid_url";
+                    return;
+                }
+
                 globalCameras[side] = camId;
                 document.getElementById(`label-cam-${side}`).textContent = `Camera ${side === 'left' ? 'Left' : 'Right'} (ID: ${camId})`;
                 const img = document.getElementById(`img-cam-${side}`);
@@ -417,6 +423,14 @@
         }
 
         initConfig();
+
+        setInterval(() => {
+            const latestImg = document.getElementById('latest-img');
+            if (latestImg && latestImg.src.includes('captures/latest.jpg')) {
+                latestImg.src = '/captures/latest.jpg?t=' + new Date().getTime();
+            }
+        }, 1000);
+
     </script>
 </body>
 

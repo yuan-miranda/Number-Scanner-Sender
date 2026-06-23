@@ -2,6 +2,7 @@ import asyncio
 import os
 import json
 import threading
+import time
 import cv2
 import httpx
 from datetime import datetime
@@ -54,6 +55,58 @@ def save_config(config_dict):
 app_config = load_config()
 
 
+class CameraManager:
+    """Runs cameras in a background thread so web and telegram can share them without crashing."""
+
+    def __init__(self):
+        self.cameras = {}
+        self.latest_frames = {}
+        self.lock = threading.Lock()
+        self.running = True
+        self.thread = threading.Thread(target=self._capture_loop, daemon=True)
+        self.thread.start()
+
+    def validate_camera(self, cam_id):
+        """Checks if a camera hardware exists and can be opened."""
+        cam_id = int(cam_id)
+        with self.lock:
+            if cam_id in self.cameras:
+                return self.cameras[cam_id].isOpened()
+
+            cap = cv2.VideoCapture(cam_id)
+            if cap.isOpened():
+                self.cameras[cam_id] = cap
+                return True
+
+            cap.release()
+            return False
+
+    def get_frame(self, cam_id):
+        cam_id = int(cam_id)
+        with self.lock:
+            if cam_id not in self.cameras:
+                cap = cv2.VideoCapture(cam_id)
+                if cap.isOpened():
+                    self.cameras[cam_id] = cap
+        return self.latest_frames.get(cam_id)
+
+    def _capture_loop(self):
+        while self.running:
+            with self.lock:
+                cam_ids = list(self.cameras.keys())
+
+            for cam_id in cam_ids:
+                cap = self.cameras[cam_id]
+                if cap.isOpened():
+                    ret, frame = cap.read()
+                    if ret:
+                        self.latest_frames[cam_id] = frame
+            time.sleep(0.03)
+
+
+cam_manager = CameraManager()
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -81,11 +134,20 @@ def set_camera():
     data = request.get_json()
     side = str(data.get("side"))
     cam_id = int(data.get("cam_id"))
+
     if side in ["left", "right"] and cam_id >= 0:
+        if not cam_manager.validate_camera(cam_id):
+            return (
+                jsonify(
+                    {"status": "error", "message": f"Camera ID {cam_id} not found."}
+                ),
+                400,
+            )
+
         app_config["cameras"][side] = cam_id
         save_config(app_config)
         return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
+    return jsonify({"status": "error", "message": "Invalid input"}), 400
 
 
 @app.route("/get_config")
@@ -107,30 +169,27 @@ def fire_servo():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-def gen_frames(camera):
-    try:
-        while True:
-            success, frame = camera.read()
-            if not success:
-                break
+def gen_frames(camera_id):
+    while True:
+        frame = cam_manager.get_frame(camera_id)
+        if frame is not None:
             ret, buffer = cv2.imencode(".jpg", frame)
-            yield (
-                b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
-                + buffer.tobytes()
-                + b"\r\n"
-            )
-    finally:
-        camera.release()
+            if ret:
+                yield (
+                    b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
+                    + buffer.tobytes()
+                    + b"\r\n"
+                )
+        time.sleep(0.05)
 
 
 @app.route("/video_feed/<camera_id>")
 def video_feed(camera_id):
-    camera = cv2.VideoCapture(int(camera_id))
-    if not camera.isOpened():
-        camera.release()
-        return "Camera offline", 503
+    if not cam_manager.validate_camera(camera_id):
+        return "Camera offline", 404
+
     return Response(
-        gen_frames(camera), mimetype="multipart/x-mixed-replace; boundary=frame"
+        gen_frames(camera_id), mimetype="multipart/x-mixed-replace; boundary=frame"
     )
 
 
@@ -191,14 +250,12 @@ async def handle_otp_requests(event):
             if target_servo in [3, 5]
             else int(app_config["cameras"]["right"])
         )
-        cam = cv2.VideoCapture(camera_index)
-        await asyncio.sleep(1.0)
-        ret, frame = cam.read()
-        cam.release()
+
+        frame = cam_manager.get_frame(camera_index)
 
         os.makedirs("captures", exist_ok=True)
         image_path = "captures/latest.jpg"
-        if ret:
+        if frame is not None:
             cv2.imwrite(image_path, frame)
         else:
             image_path = None

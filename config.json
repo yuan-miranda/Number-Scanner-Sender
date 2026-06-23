@@ -8,6 +8,6 @@
     },
     "cameras": {
         "left": 0,
-        "right": 1
+        "right": 0
     }
 }
