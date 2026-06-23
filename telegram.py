@@ -74,15 +74,7 @@ async def handle_otp_requests(event):
                 camera_index = 2
 
             cam = cv2.VideoCapture(camera_index)
-
-            cam.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-            cam.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
-
             await asyncio.sleep(1)
-
-            for _ in range(5):
-                cam.read()
-
             ret, frame = cam.read()
 
             os.makedirs("captures", exist_ok=True)
