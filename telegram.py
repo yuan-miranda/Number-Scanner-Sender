@@ -1,3 +1,7 @@
+# CHANGE ME IF THE CAMERA ARE SWAPPED (1, 2)
+CAMERA_LEFT = 1
+CAMERA_RIGHT = 2
+
 import asyncio
 import os
 from datetime import datetime
@@ -69,9 +73,9 @@ async def handle_otp_requests(event):
             # cam1 = 5, 3
             # cam2 = 1, 2, 4
             if target_servo in [5, 3]:
-                camera_index = 1
+                camera_index = CAMERA_LEFT
             else:
-                camera_index = 2
+                camera_index = CAMERA_RIGHT
 
             cam = cv2.VideoCapture(camera_index)
             await asyncio.sleep(1)
