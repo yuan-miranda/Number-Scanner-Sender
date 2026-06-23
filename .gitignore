@@ -3,6 +3,4 @@
 *.session
 *.session-journal
 *.pt
-*.png
-*.jpg
 __pycache__
