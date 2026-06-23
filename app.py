@@ -268,7 +268,11 @@ async def handle_otp_requests(event):
         print(
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {target_key}"
         )
+
         await tg_client.send_message(event.chat_id, reply_text)
+
+        await asyncio.sleep(0.5)
+        await trigger_servo(target_servo)
 
 
 async def run_telegram():
