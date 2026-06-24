@@ -305,26 +305,11 @@ TYPO_BUDGET = 3  # message can be at most this many chars longer than the token 
 
 
 def match_token(message):
-    """
-    Return the matching token dict or None.
-
-    Rules:
-    - Strip punctuation/whitespace, compare lowercase.
-    - Reject anything with more than 2 words (sentence guard).
-    - Token name must appear as a substring of the cleaned message.
-    - Cleaned message must not be more than TYPO_BUDGET chars longer than
-      the token name (prevents "shinhan" matching token "nh").
-    """
     msg = message.strip().lower()
-
-    if len(msg.split()) > 2:
-        return None
-
     clean = re.sub(r"[^a-z]", "", msg)
 
     for token in TOKENS:
-        name = token["key"]
-        if name in clean and len(clean) <= len(name) + TYPO_BUDGET:
+        if clean == token["key"]:
             return token
 
     return None
