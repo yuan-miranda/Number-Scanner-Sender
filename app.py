@@ -292,16 +292,18 @@ def video_feed(camera_id):
 
 # ── token matching ────────────────────────────────────────────────────────────
 
-# Each token: canonical key (used for OTP lookup), servo number, camera side
 TOKENS = [
-    {"key": "shinhan", "servo": 1, "camera": "right"},
-    {"key": "kfcc", "servo": 2, "camera": "right"},
-    {"key": "kakao", "servo": 3, "camera": "left"},
-    {"key": "woori", "servo": 4, "camera": "right"},
-    {"key": "nh", "servo": 5, "camera": "left"},
+    {"key": "shinhan", "servo": 1, "camera": "right", "aliases": ["sh", "shinshan"]},
+    {"key": "kfcc", "servo": 2, "camera": "right", "aliases": ["kfcc", "kfc"]},
+    {"key": "kakao", "servo": 3, "camera": "left", "aliases": ["kakao", "cacao"]},
+    {
+        "key": "woori",
+        "servo": 4,
+        "camera": "right",
+        "aliases": ["wr", "woori", "wori", "wuri"],
+    },
+    {"key": "nh", "servo": 5, "camera": "left", "aliases": ["nh"]},
 ]
-
-TYPO_BUDGET = 3  # message can be at most this many chars longer than the token name
 
 
 def match_token(message):
@@ -309,7 +311,7 @@ def match_token(message):
     clean = re.sub(r"[^a-z]", "", msg)
 
     for token in TOKENS:
-        if clean == token["key"]:
+        if clean == token["key"] or clean in token.get("aliases", []):
             return token
 
     return None
