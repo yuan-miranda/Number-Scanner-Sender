@@ -352,6 +352,8 @@ def match_token(message):
 
 processing_lock = None
 tg_client = TelegramClient("login", os.getenv("API_ID"), os.getenv("API_HASH"))
+group_chat_id = int(os.getenv("GROUP_CHAT_ID"))
+
 
 
 async def trigger_servo(servo_number):
@@ -365,8 +367,11 @@ async def trigger_servo(servo_number):
             return False
 
 
-@tg_client.on(events.NewMessage(chats="otp_22"))
+@tg_client.on(events.NewMessage)
 async def handle_otp_requests(event):
+    if event.chat_id != group_chat_id:
+        return
+
     if event.out:
         return
 
