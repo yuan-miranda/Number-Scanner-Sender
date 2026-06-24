@@ -43,6 +43,7 @@ CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "angles": {"1": 180, "2": 180, "3": 180, "4": 180, "5": 180},
     "servo_durations": {"1": 500, "2": 500, "3": 500, "4": 500, "5": 500},
+    "re_trigger": {"1": False, "2": False, "3": False, "4": False, "5": False},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
 }
@@ -61,6 +62,10 @@ def load_config():
                 for servo_id in ["1", "2", "3", "4", "5"]:
                     if servo_id not in data["servo_durations"]:
                         data["servo_durations"][servo_id] = 500
+                    if "re_trigger" not in data:
+                        data["re_trigger"] = {}
+                    if servo_id not in data["re_trigger"]:
+                        data["re_trigger"][servo_id] = False
                 return data
         except Exception:
             pass
@@ -203,6 +208,18 @@ def set_servo_duration():
     return jsonify({"status": "error"}), 400
 
 
+@app.route("/set_re_trigger", methods=["POST"])
+def set_re_trigger():
+    data = request.get_json()
+    servo = str(data.get("servo"))
+    re_trigger = bool(data.get("re_trigger", False))
+    if servo in ["1", "2", "3", "4", "5"]:
+        app_config["re_trigger"][servo] = re_trigger
+        save_config(app_config)
+        return jsonify({"status": "ok"})
+    return jsonify({"status": "error"}), 400
+
+
 @app.route("/set_capture_delay", methods=["POST"])
 def set_capture_delay():
     data = request.get_json()
@@ -221,15 +238,13 @@ def set_camera():
     cam_id = int(data.get("cam_id"))
 
     if side in ["left", "right"] and cam_id >= 0:
-        if not cam_manager.open_camera(cam_id):
-            return (
-                jsonify(
-                    {"status": "error", "message": f"Camera ID {cam_id} not found."}
-                ),
-                400,
-            )
+        # Treat the user's input as the absolute command
         app_config["cameras"][side] = cam_id
         save_config(app_config)
+
+        # Try to open it, but DO NOT block or reject if the camera isn't immediately found
+        cam_manager.open_camera(cam_id)
+
         return jsonify({"status": "ok"})
     return jsonify({"status": "error", "message": "Invalid input"}), 400
 
@@ -370,6 +385,10 @@ async def handle_otp_requests(event):
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {token['key']}"
         )
         await tg_client.send_message(event.chat_id, reply_text)
+
+        if app_config.get("re_trigger", {}).get(str(token["servo"]), False):
+            await asyncio.sleep(0.5)
+            await trigger_servo(token["servo"])
 
 
 async def run_telegram():

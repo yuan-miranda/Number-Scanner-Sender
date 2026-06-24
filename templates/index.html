@@ -136,7 +136,7 @@
             min-width: 0;
             background: var(--card-bg);
             padding: 16px;
-            border-radius: 4px;
+            border-radius: 5px;
             border: 1px solid var(--border);
             box-shadow: 0 2px 6px var(--shadow);
             display: flex;
@@ -155,12 +155,150 @@
             text-transform: uppercase;
         }
 
-        #servo-container {
-            display: flex;
-            flex-direction: column;
+        /* ── accordion styling ── */
+        .servo-details {
+            background: var(--input-bg);
+            border: 1px solid var(--border);
+            border-radius: 2px;
+            margin-bottom: 8px;
+            overflow: hidden;
+            transition: border-color .2s;
         }
 
-        /* ── servo row ── */
+        .servo-summary {
+            padding: 10px 14px;
+            font-weight: 600;
+            font-size: 13px;
+            cursor: pointer;
+            background: var(--btn-bg);
+            color: var(--text-main);
+            user-select: none;
+            display: flex;
+            align-items: center;
+            border-bottom: 1px solid transparent;
+            transition: background 0.15s;
+        }
+
+        .servo-summary:hover {
+            background: var(--btn-hover-bg);
+        }
+
+        .servo-details[open] .servo-summary {
+            border-bottom-color: var(--border);
+            background: var(--btn-hover-bg);
+        }
+
+        .servo-body {
+            padding: 14px;
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            background: var(--card-bg);
+        }
+
+        .servo-controls-row {
+            display: flex;
+            gap: 8px;
+            align-items: flex-end;
+        }
+
+        .toggle-row {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 12px;
+            font-weight: 500;
+            color: var(--text-muted);
+            cursor: pointer;
+            user-select: none;
+        }
+
+        .toggle-row input {
+            cursor: pointer;
+            width: 15px;
+            height: 15px;
+            accent-color: var(--text-main);
+            margin: 0;
+        }
+
+        /* ── legacy form controls ── */
+        .input-col {
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start;
+            gap: 4px;
+            flex: 1;
+            min-width: 0;
+        }
+
+        .input-col-label {
+            font-size: 11px;
+            font-weight: 600;
+            color: var(--text-muted);
+            white-space: nowrap;
+            line-height: 1;
+        }
+
+        input[type="number"] {
+            width: 100%;
+            min-width: 0;
+            padding: 6px 8px;
+            border: 1px solid var(--input-border);
+            border-radius: 2px;
+            font-size: 13px;
+            font-family: inherit;
+            background: var(--input-bg);
+            color: var(--text-main);
+            -moz-appearance: textfield;
+            transition: border-color .15s, background .2s, color .2s;
+        }
+
+        input[type="number"]::-webkit-outer-spin-button,
+        input[type="number"]::-webkit-inner-spin-button {
+            -webkit-appearance: none;
+        }
+
+        input[type="number"]:focus {
+            outline: none;
+            border-color: var(--text-muted);
+        }
+
+        input[type="number"].invalid {
+            border-color: #cc0000;
+            background: var(--invalid-bg);
+        }
+
+        button {
+            padding: 6px 12px;
+            cursor: pointer;
+            border: 1px solid var(--btn-border);
+            border-radius: 2px;
+            font-weight: 600;
+            font-size: 13px;
+            font-family: inherit;
+            transition: all .15s;
+            white-space: nowrap;
+            flex-shrink: 0;
+        }
+
+        .btn-set {
+            background: var(--btn-bg);
+            color: var(--btn-color);
+            border-color: var(--btn-border);
+        }
+
+        .btn-set:hover {
+            background: var(--btn-hover-bg);
+            border-color: var(--btn-hover-border);
+        }
+
+        .section-divider {
+            border: none;
+            border-top: 1px solid var(--border);
+            margin: 16px 0 12px;
+        }
+
+        /* ── global servo groups ── */
         .servo-group {
             display: flex;
             align-items: flex-end;
@@ -183,92 +321,12 @@
             color: var(--text-main);
         }
 
-        /* inputs + button sit in a flex row that can shrink */
         .servo-controls {
             display: flex;
             gap: 5px;
             align-items: flex-end;
             flex: 1;
             min-width: 0;
-        }
-
-        .input-col {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 2px;
-            flex: 1;
-            /* each input column grows equally */
-            min-width: 0;
-        }
-
-        .input-col-label {
-            font-size: 10px;
-            color: var(--text-muted);
-            white-space: nowrap;
-            line-height: 1;
-        }
-
-        input[type="number"] {
-            width: 100%;
-            /* fills its .input-col instead of a fixed px */
-            min-width: 0;
-            padding: 5px 4px;
-            border: 1px solid var(--input-border);
-            border-radius: 4px;
-            text-align: center;
-            font-size: 13px;
-            font-family: inherit;
-            background: var(--input-bg);
-            color: var(--text-main);
-            -moz-appearance: textfield;
-            transition: border-color .15s, background .2s, color .2s;
-        }
-
-        input[type="number"]::-webkit-outer-spin-button,
-        input[type="number"]::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-        }
-
-        input[type="number"]:focus {
-            outline: none;
-            border-color: var(--primary);
-        }
-
-        input[type="number"].invalid {
-            border-color: #cc0000;
-            background: var(--invalid-bg);
-        }
-
-        button {
-            padding: 5px 10px;
-            cursor: pointer;
-            border: 1px solid var(--btn-border);
-            border-radius: 4px;
-            font-weight: 600;
-            font-size: 12px;
-            font-family: inherit;
-            transition: all .15s;
-            white-space: nowrap;
-            flex-shrink: 0;
-            /* button never squishes */
-        }
-
-        .btn-set {
-            background: var(--btn-bg);
-            color: var(--btn-color);
-            border-color: var(--btn-border);
-        }
-
-        .btn-set:hover {
-            background: var(--btn-hover-bg);
-            border-color: var(--btn-hover-border);
-        }
-
-        .section-divider {
-            border: none;
-            border-top: 1px solid var(--border);
-            margin: 16px 0 12px;
         }
 
         /* ── right panel ── */
@@ -285,7 +343,7 @@
 
         .stream-box {
             background: #000;
-            border-radius: 4px;
+            border-radius: 2px;
             overflow: hidden;
             position: relative;
             aspect-ratio: 4 / 3;
@@ -320,7 +378,7 @@
             background: rgba(255, 255, 255, .2);
             padding: 3px 8px;
             font-size: 11px;
-            border-radius: 4px;
+            border-radius: 5px;
             color: #fff;
             font-weight: 500;
             border: none;
@@ -394,21 +452,21 @@
             <h2 style="margin-top:0">Camera Config</h2>
 
             <div class="servo-group">
-                <div class="servo-name">Left</div>
+                <div class="servo-name">Left (ID)</div>
                 <div class="servo-controls">
                     <div class="input-col"><input type="number" id="cam-left-input" min="0"></div>
                     <button class="btn-set" onclick="saveCamera('left')">Set</button>
                 </div>
             </div>
             <div class="servo-group">
-                <div class="servo-name">Right</div>
+                <div class="servo-name">Right (ID)</div>
                 <div class="servo-controls">
                     <div class="input-col"><input type="number" id="cam-right-input" min="0"></div>
                     <button class="btn-set" onclick="saveCamera('right')">Set</button>
                 </div>
             </div>
             <div class="servo-group">
-                <div class="servo-name">Delay ms</div>
+                <div class="servo-name">Delay (ms)</div>
                 <div class="servo-controls">
                     <div class="input-col"><input type="number" id="capture-delay-input" min="0" max="30000"></div>
                     <button class="btn-set" onclick="saveCaptureDelay()">Set</button>
@@ -540,32 +598,54 @@
             camState[side] = false;
         }
 
-        // ── servo row builder ─────────────────────────────────────────────────────
+        // ── servo row builder (accordion) ─────────────────────────────────────────
 
-        function buildServoRow(token, angle, duration, showLabels) {
-            const div = document.createElement('div');
-            div.className = 'servo-group';
-            div.innerHTML = `
-                <div class="servo-name">${token.name}</div>
-                <div class="servo-controls">
-                    <div class="input-col">
-                        ${showLabels ? '<span class="input-col-label">angle °</span>' : ''}
-                        <input type="number" id="act-${token.id}" value="${angle}" min="1" max="180">
-                    </div>
-                    <div class="input-col">
-                        ${showLabels ? '<span class="input-col-label">duration ms</span>' : ''}
-                        <input type="number" id="dur-${token.id}" value="${duration}" min="0" max="10000">
-                    </div>
-                    <button class="btn-set" onclick="testServo(${token.id})">Test</button>
-                </div>`;
+        function buildServoRow(token, angle, duration, reTrigger) {
+            const details = document.createElement('details');
+            details.className = 'servo-details';
+            details.name = 'servo-accordion'; // Modern native HTML way to make it exclusive
 
-            bindValidatedInput(div.querySelector(`#act-${token.id}`), isAngleValid, 1, 180,
+            // Fallback for Chromium/browsers that haven't fully rolled out the 'name' attribute on details
+            details.addEventListener('toggle', () => {
+                if (details.open) {
+                    document.querySelectorAll('.servo-details').forEach(other => {
+                        if (other !== details && other.open) other.open = false;
+                    });
+                }
+            });
+
+            details.innerHTML = `
+                <summary class="servo-summary">${token.name}</summary>
+                <div class="servo-body">
+                    <div class="servo-controls-row">
+                        <div class="input-col">
+                            <span class="input-col-label">Angle (°)</span>
+                            <input type="number" id="act-${token.id}" value="${angle}" min="1" max="180">
+                        </div>
+                        <div class="input-col">
+                            <span class="input-col-label">Press Time (ms)</span>
+                            <input type="number" id="dur-${token.id}" value="${duration}" min="0" max="10000">
+                        </div>
+                        <button class="btn-set" onclick="testServo(${token.id})">Test</button>
+                    </div>
+                    <label class="toggle-row">
+                        <input type="checkbox" id="ret-${token.id}" ${reTrigger ? 'checked' : ''}>
+                        Re-trigger after capture
+                    </label>
+                </div>
+            `;
+
+            bindValidatedInput(details.querySelector(`#act-${token.id}`), isAngleValid, 1, 180,
                 v => post('/set_angle', { servo: token.id, angle: v }));
 
-            bindValidatedInput(div.querySelector(`#dur-${token.id}`), isDurationValid, 0, 10000,
+            bindValidatedInput(details.querySelector(`#dur-${token.id}`), isDurationValid, 0, 10000,
                 v => post('/set_servo_duration', { servo: token.id, duration: v }));
 
-            return div;
+            details.querySelector(`#ret-${token.id}`).addEventListener('change', e => {
+                post('/set_re_trigger', { servo: token.id, re_trigger: e.target.checked });
+            });
+
+            return details;
         }
 
         // ── init ──────────────────────────────────────────────────────────────────
@@ -589,15 +669,16 @@
             });
 
             const durations = data.servo_durations || {};
+            const reTriggers = data.re_trigger || {};
             const container = el('servo-container');
             container.innerHTML = '';
 
-            TOKENS.forEach((token, idx) => {
+            TOKENS.forEach((token) => {
                 const row = buildServoRow(
                     token,
                     data.angles[token.id] ?? 180,
                     durations[token.id] ?? 500,
-                    idx === 0
+                    reTriggers[token.id] ?? false
                 );
                 container.appendChild(row);
             });
@@ -610,9 +691,13 @@
             if (input === '') return;
             const camId = Number(input);
             const res = await post('/set_camera', { side, cam_id: camId });
-            if (!res.ok) { el(`img-cam-${side}`).src = 'invalid_url'; return; }
+
+            // Always treat the input as absolute. Set local variables unconditionally.
             globalCameras[side] = camId;
             setCamSideOpen(side, camId);
+
+            // If the backend had an issue responding, log it, but user's choice still applies.
+            if (!res.ok) console.warn("Camera backend check response:", res);
         }
 
         async function toggleCamera(side) {
