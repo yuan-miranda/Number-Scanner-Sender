@@ -5,6 +5,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OTP Control Panel</title>
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
     <style>
         /* ── theme tokens ── */
         :root {
@@ -414,86 +415,122 @@
     </style>
 </head>
 
-<body>
+<body x-data="otpPanel()" x-init="init()" :data-theme="dark ? 'dark' : 'light'">
+
+    <!-- ── top bar ── -->
     <div class="topbar">
         <span class="topbar-title">OTP Control Panel</span>
-        <label class="theme-toggle" title="Toggle dark mode">
-            <span id="theme-label">Light</span>
-            <div class="toggle-track" id="theme-track"></div>
+        <label class="theme-toggle" title="Toggle dark mode" @click="dark = !dark">
+            <span x-text="dark ? 'Dark' : 'Light'"></span>
+            <div class="toggle-track"></div>
         </label>
     </div>
 
     <div class="dashboard-container">
 
+        <!-- ── left panel ── -->
         <div class="panel-left">
             <h2>Servo Controls</h2>
-            <div id="servo-container">Loading...</div>
+
+            <!-- Servo accordion — rendered by Alpine loop -->
+            <template x-if="configLoaded">
+                <div>
+                    <template x-for="token in TOKENS" :key="token.id">
+                        <details class="servo-details" name="servo-accordion"
+                            @toggle="onAccordionToggle($event, token.id)">
+                            <summary class="servo-summary" x-text="token.name"></summary>
+                            <div class="servo-body">
+                                <div class="servo-group" style="padding:0; border-bottom:none;">
+                                    <div class="servo-name">Angle (°)</div>
+                                    <div class="servo-controls">
+                                        <input type="number" :value="angles[token.id]" min="1" max="180"
+                                            @input="validateAngle($event)" @change="onAngleChange($event, token.id)">
+                                        <button class="btn-set"
+                                            @click="testServo(token.id, $el.closest('.servo-body').querySelector('input').value)">Test</button>
+                                    </div>
+                                </div>
+                                <label class="toggle-row">
+                                    <input type="checkbox" :checked="reTriggers[token.id]"
+                                        @change="onReTriggerChange($event, token.id)">
+                                    Re-trigger after capture
+                                </label>
+                            </div>
+                        </details>
+                    </template>
+                </div>
+            </template>
+            <div x-show="!configLoaded" style="font-size:13px; color:var(--text-muted);">Loading...</div>
 
             <hr class="section-divider">
             <h2 style="margin-top:0">Camera Config</h2>
 
-            <div class="servo-group">
-                <div class="servo-name">Left (ID)</div>
-                <div class="servo-controls">
-                    <div class="input-col">
-                        <input type="number" id="cam-left-input" min="0" max="3">
+            <template x-for="side in SIDES" :key="side">
+                <div class="servo-group">
+                    <div class="servo-name" x-text="side.charAt(0).toUpperCase() + side.slice(1) + ' (ID)'"></div>
+                    <div class="servo-controls">
+                        <div class="input-col">
+                            <input type="number" :value="cameras[side]" min="0" max="3" @input="validateCamId($event)"
+                                @change="onCamIdChange($event, side)">
+                        </div>
+                        <button class="btn-set" @click="saveCamera(side)">Set</button>
                     </div>
-                    <button class="btn-set" onclick="saveCamera('left')">Set</button>
                 </div>
-            </div>
-            <div class="servo-group">
-                <div class="servo-name">Right (ID)</div>
-                <div class="servo-controls">
-                    <div class="input-col">
-                        <input type="number" id="cam-right-input" min="0" max="3">
-                    </div>
-                    <button class="btn-set" onclick="saveCamera('right')">Set</button>
-                </div>
-            </div>
+            </template>
+
             <div class="servo-group">
                 <div class="servo-name">Delay (ms)</div>
                 <div class="servo-controls">
                     <div class="input-col">
-                        <input type="number" id="capture-delay-input" min="1000" max="5000">
+                        <input type="number" :value="captureDelay" min="1000" max="5000" @input="validateDelay($event)"
+                            @change="captureDelay = Number($event.target.value)">
                     </div>
-                    <button class="btn-set" onclick="saveCaptureDelay()">Set</button>
+                    <button class="btn-set" @click="saveCaptureDelay()">Set</button>
                 </div>
             </div>
 
-            <!-- placed at the very bottom left <p> -->
             <p style="margin-top: auto; font-size: 11px; color: var(--text-muted);">
                 &copy; yuan-miranda
             </p>
         </div>
 
+        <!-- ── right panel ── -->
         <div class="panel-right">
             <div class="grid-2x2">
-                <div class="stream-box" id="box-cam-left">
+
+                <!-- Left camera -->
+                <div class="stream-box">
                     <div class="stream-header">
-                        <span id="label-cam-left">Camera Left (ID: -)</span>
-                        <button class="stream-btn" id="btn-cam-left" onclick="toggleCamera('left')">Close</button>
+                        <span x-text="camLabel('left')"></span>
+                        <button class="stream-btn" :class="{ closed: !camOpen.left }"
+                            x-text="camOpen.left ? 'Close' : 'Open'" @click="toggleCamera('left')">
+                        </button>
                     </div>
-                    <img id="img-cam-left" src="" onerror="setCamSideClosed('left')">
-                    <div class="cam-offline-overlay" id="overlay-cam-left">Camera offline</div>
+                    <img :src="camSrc.left" @error="setCamClosed('left')" x-show="camOpen.left">
+                    <div class="cam-offline-overlay" :class="{ visible: !camOpen.left }">Camera offline</div>
                 </div>
 
-                <div class="stream-box" id="box-cam-right">
+                <!-- Right camera -->
+                <div class="stream-box">
                     <div class="stream-header">
-                        <span id="label-cam-right">Camera Right (ID: -)</span>
-                        <button class="stream-btn" id="btn-cam-right" onclick="toggleCamera('right')">Close</button>
+                        <span x-text="camLabel('right')"></span>
+                        <button class="stream-btn" :class="{ closed: !camOpen.right }"
+                            x-text="camOpen.right ? 'Close' : 'Open'" @click="toggleCamera('right')">
+                        </button>
                     </div>
-                    <img id="img-cam-right" src="" onerror="setCamSideClosed('right')">
-                    <div class="cam-offline-overlay" id="overlay-cam-right">Camera offline</div>
+                    <img :src="camSrc.right" @error="setCamClosed('right')" x-show="camOpen.right">
+                    <div class="cam-offline-overlay" :class="{ visible: !camOpen.right }">Camera offline</div>
                 </div>
 
+                <!-- Latest capture -->
                 <div class="stream-box">
                     <div class="stream-header">
                         <span>Latest Capture</span>
-                        <button class="stream-btn" onclick="reloadCapture()">↻ Reload</button>
+                        <button class="stream-btn" @click="reloadCapture()">↻ Reload</button>
                     </div>
-                    <img id="latest-img" src="/captures/latest.jpg" onerror="setCaptureMissing(true)"
-                        onload="setCaptureMissing(false)">
-                    <div class="cam-offline-overlay" id="overlay-latest">No capture</div>
+                    <img :src="latestSrc" :style="captureMissing ? 'visibility:hidden' : ''"
+                        @error="captureMissing = true; capturePolling = false"
+                        @load="captureMissing = false; capturePolling = true">
+                    <div class="cam-offline-overlay" :class="{ visible: captureMissing }">No capture</div>
                 </div>
 
                 <div class="empty-slot"></div>
@@ -501,260 +538,193 @@
         </div>
 
     </div>
+
     <script>
-        // ── constants ──────────────────────────────────────────────────────────────
+        function otpPanel() {
+            return {
+                // ── constants ──────────────────────────────────────────────
+                TOKENS: [
+                    { id: 1, name: 'Shinhan' },
+                    { id: 2, name: 'KFCC' },
+                    { id: 3, name: 'Kakao' },
+                    { id: 4, name: 'Woori' },
+                    { id: 5, name: 'NH' },
+                ],
+                SIDES: ['left', 'right'],
 
-        const TOKENS = [
-            { id: 1, name: 'Shinhan' },
-            { id: 2, name: 'KFCC' },
-            { id: 3, name: 'Kakao' },
-            { id: 4, name: 'Woori' },
-            { id: 5, name: 'NH' },
-        ];
+                // ── state ──────────────────────────────────────────────────
+                dark: false,
+                configLoaded: false,
+                angles: {},
+                reTriggers: {},
+                cameras: { left: 0, right: 1 },
+                captureDelay: 1000,
+                camOpen: { left: true, right: true },
+                camSrc: { left: '', right: '' },
+                latestSrc: '/captures/latest.jpg',
+                captureMissing: false,
+                capturePolling: true,
 
-        const SIDES = ['left', 'right'];
+                // ── init ───────────────────────────────────────────────────
+                init() {
+                    // Theme: respect saved preference or OS setting
+                    const saved = localStorage.getItem('theme');
+                    this.dark = saved
+                        ? saved === 'dark'
+                        : window.matchMedia('(prefers-color-scheme: dark)').matches;
 
-        // ── state ──────────────────────────────────────────────────────────────────
+                    // Persist theme changes
+                    this.$watch('dark', val =>
+                        localStorage.setItem('theme', val ? 'dark' : 'light')
+                    );
 
-        let globalCameras = { left: 0, right: 1 };
-        const camOpenId = {};
-        const camState = {};
+                    this.loadConfig();
 
-        // ── DOM helpers ────────────────────────────────────────────────────────────
+                    // Poll latest capture every second
+                    setInterval(() => {
+                        if (this.capturePolling)
+                            this.latestSrc = `/captures/latest.jpg?t=${Date.now()}`;
+                    }, 1000);
+                },
 
-        const el = id => document.getElementById(id);
-        const val = id => el(id).value;
-
-        // ── network helpers ────────────────────────────────────────────────────────
-
-        const post = (url, body) => fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body),
-        });
-
-        const bustUrl = path => `${path}?t=${Date.now()}`;
-
-        // ── validation helpers ─────────────────────────────────────────────────────
-
-        const isAngleValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 180; };
-        const isIdValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 3; };
-        const isDelayValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 1000 && n <= 5000; };
-
-        const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v || lo));
-
-        function bindValidatedInput(inputEl, isValid, lo, hi, onChange) {
-            inputEl.addEventListener('input', () =>
-                inputEl.classList.toggle('invalid', !isValid(inputEl.value))
-            );
-            inputEl.addEventListener('change', () => {
-                if (!isValid(inputEl.value)) inputEl.value = clamp(Number(inputEl.value), lo, hi);
-                inputEl.classList.remove('invalid');
-                onChange(Number(inputEl.value));
-            });
-        }
-
-        // ── theme ──────────────────────────────────────────────────────────────────
-
-        function applyTheme(dark) {
-            document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
-            el('theme-label').textContent = dark ? 'Dark' : 'Light';
-            localStorage.setItem('theme', dark ? 'dark' : 'light');
-        }
-
-        function initTheme() {
-            const saved = localStorage.getItem('theme');
-            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-            applyTheme(saved ? saved === 'dark' : prefersDark);
-            el('theme-track').addEventListener('click', () => {
-                applyTheme(document.documentElement.getAttribute('data-theme') !== 'dark');
-            });
-        }
-
-        // ── camera state helpers ───────────────────────────────────────────────────
-
-        function setCamSideOpen(side, camId) {
-            const label = side === 'left' ? 'Left' : 'Right';
-            el(`label-cam-${side}`).textContent = `Camera ${label} (ID: ${camId})`;
-            el(`img-cam-${side}`).src = bustUrl(`/video_feed/${camId}`);
-            el(`overlay-cam-${side}`).classList.remove('visible');
-            const btn = el(`btn-cam-${side}`);
-            btn.textContent = 'Close';
-            btn.classList.remove('closed');
-            camOpenId[side] = camId;
-            camState[side] = true;
-        }
-
-        function setCamSideClosed(side) {
-            el(`img-cam-${side}`).src = '';
-            el(`overlay-cam-${side}`).classList.add('visible');
-            const btn = el(`btn-cam-${side}`);
-            btn.textContent = 'Open';
-            btn.classList.add('closed');
-            camState[side] = false;
-        }
-
-        // ── servo row builder (accordion) ──────────────────────────────────────────
-
-        function buildServoRow(token, angle, reTrigger) {
-            const details = document.createElement('details');
-            details.className = 'servo-details';
-            details.name = 'servo-accordion';
-
-            details.addEventListener('toggle', () => {
-                if (details.open) {
-                    document.querySelectorAll('.servo-details').forEach(other => {
-                        if (other !== details && other.open) other.open = false;
+                // ── network helpers ────────────────────────────────────────
+                post(url, body) {
+                    return fetch(url, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(body),
                     });
-                }
-            });
+                },
 
-            details.innerHTML = `
-                <summary class="servo-summary">${token.name}</summary>
-                <div class="servo-body">
-                    <div class="servo-group" style="padding:0; border-bottom:none;">
-                        <div class="servo-name">Angle (°)</div>
-                        <div class="servo-controls">
-                            <input type="number" id="act-${token.id}" value="${angle}" min="1" max="180">
-                            <button class="btn-set" onclick="testServo(${token.id})">Test</button>
-                        </div>
-                    </div>
-                    <label class="toggle-row">
-                        <input type="checkbox" id="ret-${token.id}" ${reTrigger ? 'checked' : ''}>
-                        Re-trigger after capture
-                    </label>
-                </div>
-            `;
+                bustUrl(path) {
+                    return `${path}?t=${Date.now()}`;
+                },
 
-            bindValidatedInput(
-                details.querySelector(`#act-${token.id}`),
-                isAngleValid, 1, 180,
-                v => post('/set_angle', { servo: token.id, angle: v })
-            );
+                // ── validation ─────────────────────────────────────────────
+                isAngleValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 180; },
+                isIdValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 3; },
+                isDelayValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 1000 && n <= 5000; },
+                clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v || lo)); },
 
-            details.querySelector(`#ret-${token.id}`).addEventListener('change', e => {
-                post('/set_re_trigger', { servo: token.id, re_trigger: e.target.checked });
-            });
+                validateAngle(e) {
+                    e.target.classList.toggle('invalid', !this.isAngleValid(e.target.value));
+                },
+                validateCamId(e) {
+                    e.target.classList.toggle('invalid', !this.isIdValid(e.target.value));
+                },
+                validateDelay(e) {
+                    e.target.classList.toggle('invalid', !this.isDelayValid(e.target.value));
+                },
 
-            return details;
+                // ── config load ────────────────────────────────────────────
+                async loadConfig() {
+                    let data;
+                    try {
+                        data = await fetch('/get_config').then(r => r.json());
+                    } catch {
+                        this.configLoaded = 'error';
+                        return;
+                    }
+
+                    this.angles = { ...data.angles };
+                    this.reTriggers = { ...(data.re_trigger || {}) };
+                    this.captureDelay = data.capture_delay_ms ?? 1000;
+                    this.cameras = { ...data.cameras };
+                    this.configLoaded = true;
+
+                    this.SIDES.forEach(side => this.openCamera(side, this.cameras[side]));
+                },
+
+                // ── camera helpers ─────────────────────────────────────────
+                camLabel(side) {
+                    const label = side.charAt(0).toUpperCase() + side.slice(1);
+                    return `Camera ${label} (ID: ${this.cameras[side] ?? '-'})`;
+                },
+
+                openCamera(side, camId) {
+                    this.camSrc[side] = this.bustUrl(`/video_feed/${camId}`);
+                    this.camOpen[side] = true;
+                },
+
+                setCamClosed(side) {
+                    this.camSrc[side] = '';
+                    this.camOpen[side] = false;
+                },
+
+                async toggleCamera(side) {
+                    if (this.camOpen[side]) {
+                        this.setCamClosed(side);
+                        const other = side === 'left' ? 'right' : 'left';
+                        const otherSameId = this.camOpen[other] && this.cameras[other] === this.cameras[side];
+                        if (!otherSameId)
+                            await this.post('/release_camera', { cam_id: this.cameras[side] });
+                    } else {
+                        const res = await this.post('/set_camera', { side, cam_id: this.cameras[side] });
+                        if (res.ok) this.openCamera(side, this.cameras[side]);
+                    }
+                },
+
+                async saveCamera(side) {
+                    if (!this.isIdValid(this.cameras[side])) {
+                        alert('Camera ID must be between 0 and 3');
+                        this.cameras[side] = this.clamp(Number(this.cameras[side]), 0, 3);
+                        return;
+                    }
+                    const res = await this.post('/set_camera', { side, cam_id: Number(this.cameras[side]) });
+                    if (res.ok) this.openCamera(side, this.cameras[side]);
+                },
+
+                onCamIdChange(e, side) {
+                    if (!this.isIdValid(e.target.value))
+                        e.target.value = this.clamp(Number(e.target.value), 0, 3);
+                    e.target.classList.remove('invalid');
+                    this.cameras[side] = Number(e.target.value);
+                },
+
+                // ── servo helpers ──────────────────────────────────────────
+                onAccordionToggle(e, id) {
+                    if (e.target.open) {
+                        document.querySelectorAll('.servo-details').forEach(el => {
+                            if (el !== e.target && el.open) el.open = false;
+                        });
+                    }
+                },
+
+                onAngleChange(e, id) {
+                    if (!this.isAngleValid(e.target.value))
+                        e.target.value = this.clamp(Number(e.target.value), 1, 180);
+                    e.target.classList.remove('invalid');
+                    const v = Number(e.target.value);
+                    this.angles[id] = v;
+                    this.post('/set_angle', { servo: id, angle: v });
+                },
+
+                testServo(id, angleVal) {
+                    if (this.isAngleValid(angleVal))
+                        fetch(`/fire_servo?servo=${id}&angle=${angleVal}&reset_angle=0`);
+                },
+
+                onReTriggerChange(e, id) {
+                    this.reTriggers[id] = e.target.checked;
+                    this.post('/set_re_trigger', { servo: id, re_trigger: e.target.checked });
+                },
+
+                // ── capture helpers ────────────────────────────────────────
+                saveCaptureDelay() {
+                    if (!this.isDelayValid(this.captureDelay)) {
+                        alert('Delay must be between 1000ms and 5000ms (1–5s)');
+                        this.captureDelay = this.clamp(Number(this.captureDelay), 1000, 5000);
+                        return;
+                    }
+                    this.post('/set_capture_delay', { delay_ms: this.captureDelay });
+                },
+
+                reloadCapture() {
+                    this.capturePolling = true;
+                    this.latestSrc = this.bustUrl('/captures/latest.jpg');
+                },
+            };
         }
-
-        // ── init ───────────────────────────────────────────────────────────────────
-
-        async function initConfig() {
-            let data;
-            try {
-                data = await fetch('/get_config').then(r => r.json());
-            } catch {
-                el('servo-container').innerHTML = '<div style="color:red">Failed to load configuration.</div>';
-                return;
-            }
-
-            globalCameras = data.cameras;
-            SIDES.forEach(side => {
-                const input = el(`cam-${side}-input`);
-                input.value = globalCameras[side];
-                bindValidatedInput(input, isIdValid, 0, 3, v => {
-                    globalCameras[side] = v;
-                    post('/set_camera', { side, cam_id: v }).then(res => {
-                        if (res.ok) setCamSideOpen(side, v);
-                    });
-                });
-            });
-
-            el('capture-delay-input').value = data.capture_delay_ms ?? 1000;
-
-            SIDES.forEach(side => setCamSideOpen(side, globalCameras[side]));
-
-            const reTriggers = data.re_trigger || {};
-            const container = el('servo-container');
-            container.innerHTML = '';
-
-            TOKENS.forEach(token => {
-                container.appendChild(buildServoRow(
-                    token,
-                    data.angles[token.id] ?? 180,
-                    reTriggers[token.id] ?? false
-                ));
-            });
-        }
-
-        // ── camera actions ─────────────────────────────────────────────────────────
-
-        async function saveCamera(side) {
-            const input = val(`cam-${side}-input`);
-            if (!isIdValid(input)) {
-                alert("Camera ID must be between 0 and 3");
-                el(`cam-${side}-input`).value = clamp(Number(input), 0, 3);
-                return;
-            }
-            const camId = Number(input);
-            const res = await post('/set_camera', { side, cam_id: camId });
-            if (res.ok) {
-                globalCameras[side] = camId;
-                setCamSideOpen(side, camId);
-            }
-        }
-
-        async function toggleCamera(side) {
-            const isOpen = camState[side] !== false;
-            const camId = camOpenId[side] ?? globalCameras[side];
-
-            if (isOpen) {
-                setCamSideClosed(side);
-                const other = side === 'left' ? 'right' : 'left';
-                const otherOpen = camState[other] !== false;
-                const otherCamId = camOpenId[other] ?? globalCameras[other];
-                if (!(otherOpen && otherCamId === camId))
-                    await post('/release_camera', { cam_id: camId });
-            } else {
-                const res = await post('/set_camera', { side, cam_id: camId });
-                if (res.ok) setCamSideOpen(side, camId);
-            }
-        }
-
-        // ── servo actions ──────────────────────────────────────────────────────────
-
-        function testServo(id) {
-            const angle = el(`act-${id}`).value;
-            if (isAngleValid(angle))
-                fetch(`/fire_servo?servo=${id}&angle=${angle}&reset_angle=0`);
-        }
-
-        // ── misc actions ───────────────────────────────────────────────────────────
-
-        function saveCaptureDelay() {
-            const v = parseInt(val('capture-delay-input'), 10);
-            if (!isDelayValid(v)) {
-                alert("Delay must be between 1000ms and 5000ms (1–5s)");
-                el('capture-delay-input').value = clamp(v, 1000, 5000);
-                return;
-            }
-            post('/set_capture_delay', { delay_ms: v });
-        }
-
-        let capturePolling = true;
-
-        function setCaptureMissing(missing) {
-            el('overlay-latest').classList.toggle('visible', missing);
-            el('latest-img').style.visibility = missing ? 'hidden' : '';
-            capturePolling = !missing;
-        }
-
-        function reloadCapture() {
-            capturePolling = true;
-            el('latest-img').src = bustUrl('/captures/latest.jpg');
-        }
-
-        // ── boot ───────────────────────────────────────────────────────────────────
-
-        initTheme();
-        initConfig();
-
-        setInterval(() => {
-            if (capturePolling)
-                el('latest-img').src = bustUrl('/captures/latest.jpg');
-        }, 1000);
     </script>
 </body>
 
