@@ -7,6 +7,8 @@ const char *password = "VILLAROSA1225!";
 
 WebServer server(80);
 Servo servos[5];
+
+// DONT REMOVE FOR FUTURE USE {4, 13, 16, 17, 18, 19, 21, 22, 25, 26}
 const int servoPins[5] = {4, 13, 14, 25, 26};
 
 void handleActivate() {
