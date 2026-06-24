@@ -22,7 +22,7 @@ from telethon import TelegramClient, events
 
 load_dotenv()
 
-# ── silence noisy Werkzeug routes ────────────────────────────────────────────
+# ── silence noisy Werkzeug routes ─────────────────────────────────────────────
 
 
 class SilenceRoutes(logging.Filter):
@@ -35,18 +35,19 @@ class SilenceRoutes(logging.Filter):
 
 logging.getLogger("werkzeug").addFilter(SilenceRoutes())
 
-# ── app setup ─────────────────────────────────────────────────────────────────
+# ── app setup ──────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
 ESP32_IP = os.getenv("ESP32_IP")
 CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "angles": {"1": 180, "2": 180, "3": 180, "4": 180, "5": 180},
-    "servo_durations": {"1": 500, "2": 500, "3": 500, "4": 500, "5": 500},
     "re_trigger": {"1": False, "2": False, "3": False, "4": False, "5": False},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
 }
+VALID_SERVOS = {"1", "2", "3", "4", "5"}
+VALID_SIDES = {"left", "right"}
 
 
 def load_config():
@@ -54,19 +55,14 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
-                if "angles" not in data:
-                    return DEFAULT_CONFIG.copy()
-                for key, val in DEFAULT_CONFIG.items():
-                    if key not in data:
-                        data[key] = val
-                for servo_id in ["1", "2", "3", "4", "5"]:
-                    if servo_id not in data["servo_durations"]:
-                        data["servo_durations"][servo_id] = 500
-                    if "re_trigger" not in data:
-                        data["re_trigger"] = {}
-                    if servo_id not in data["re_trigger"]:
-                        data["re_trigger"][servo_id] = False
-                return data
+            if "angles" not in data:
+                return DEFAULT_CONFIG.copy()
+            for key, val in DEFAULT_CONFIG.items():
+                if key not in data:
+                    data[key] = val
+            for servo_id in VALID_SERVOS:
+                data["re_trigger"].setdefault(servo_id, False)
+            return data
         except Exception:
             pass
     with open(CONFIG_FILE, "w") as f:
@@ -85,7 +81,7 @@ def save_config(config_dict):
 app_config = load_config()
 
 
-# ── camera manager ────────────────────────────────────────────────────────────
+# ── camera manager ─────────────────────────────────────────────────────────────
 
 
 class CameraManager:
@@ -100,7 +96,6 @@ class CameraManager:
         self.thread.start()
 
     def open_camera(self, cam_id):
-        """Open a camera and start capturing from it. Returns True on success."""
         cam_id = int(cam_id)
         with self.lock:
             if cam_id in self.cameras:
@@ -108,7 +103,6 @@ class CameraManager:
                     return True
                 self.cameras[cam_id].release()
                 del self.cameras[cam_id]
-
             cap = cv2.VideoCapture(cam_id)
             if cap.isOpened():
                 self.cameras[cam_id] = cap
@@ -117,24 +111,12 @@ class CameraManager:
             return False
 
     def release_camera(self, cam_id):
-        """Release a camera and stop capturing from it."""
         cam_id = int(cam_id)
         with self.lock:
             if cam_id in self.cameras:
                 self.cameras[cam_id].release()
                 del self.cameras[cam_id]
             self.latest_frames.pop(cam_id, None)
-
-    def validate_camera(self, cam_id):
-        """Check if camera exists without permanently opening it."""
-        cam_id = int(cam_id)
-        with self.lock:
-            if cam_id in self.cameras:
-                return self.cameras[cam_id].isOpened()
-        cap = cv2.VideoCapture(cam_id)
-        ok = cap.isOpened()
-        cap.release()
-        return ok
 
     def get_frame(self, cam_id):
         cam_id = int(cam_id)
@@ -166,12 +148,12 @@ class CameraManager:
 
 cam_manager = CameraManager()
 
-for _side in ["left", "right"]:
+for _side in VALID_SIDES:
     _cam_id = app_config["cameras"].get(_side, 0)
     cam_manager.open_camera(_cam_id)
 
 
-# ── flask routes ──────────────────────────────────────────────────────────────
+# ── flask routes ───────────────────────────────────────────────────────────────
 
 
 @app.route("/")
@@ -184,28 +166,29 @@ def get_capture(filename):
     return send_from_directory("captures", filename)
 
 
+@app.route("/get_config")
+def get_config():
+    return jsonify(app_config)
+
+
 @app.route("/set_angle", methods=["POST"])
 def set_angle():
     data = request.get_json()
     servo = str(data.get("servo"))
-    angle = int(data.get("angle"))
-    if servo in ["1", "2", "3", "4", "5"] and 1 <= angle <= 180:
-        app_config["angles"][servo] = angle
-        save_config(app_config)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
+    try:
+        angle = int(data.get("angle"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid angle value"}), 400
 
+    if servo not in VALID_SERVOS or not (1 <= angle <= 180):
+        return (
+            jsonify({"status": "error", "message": "Angle must be between 1 and 180"}),
+            400,
+        )
 
-@app.route("/set_servo_duration", methods=["POST"])
-def set_servo_duration():
-    data = request.get_json()
-    servo = str(data.get("servo"))
-    duration = int(data.get("duration"))
-    if servo in ["1", "2", "3", "4", "5"] and 0 <= duration <= 10000:
-        app_config["servo_durations"][servo] = duration
-        save_config(app_config)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
+    app_config["angles"][servo] = angle
+    save_config(app_config)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/set_re_trigger", methods=["POST"])
@@ -213,64 +196,96 @@ def set_re_trigger():
     data = request.get_json()
     servo = str(data.get("servo"))
     re_trigger = bool(data.get("re_trigger", False))
-    if servo in ["1", "2", "3", "4", "5"]:
-        app_config["re_trigger"][servo] = re_trigger
-        save_config(app_config)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+
+    app_config["re_trigger"][servo] = re_trigger
+    save_config(app_config)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/set_capture_delay", methods=["POST"])
 def set_capture_delay():
     data = request.get_json()
-    delay = int(data.get("delay_ms", 1000))
-    if 0 <= delay <= 30000:
-        app_config["capture_delay_ms"] = delay
-        save_config(app_config)
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error"}), 400
+    try:
+        delay = int(data.get("delay_ms"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid delay value"}), 400
+
+    if not (1000 <= delay <= 5000):
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Delay must be between 1000ms and 5000ms",
+                }
+            ),
+            400,
+        )
+
+    app_config["capture_delay_ms"] = delay
+    save_config(app_config)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
     side = str(data.get("side"))
-    cam_id = int(data.get("cam_id"))
+    try:
+        cam_id = int(data.get("cam_id"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid camera ID value"}), 400
 
-    if side in ["left", "right"] and cam_id >= 0:
-        # Treat the user's input as the absolute command
-        app_config["cameras"][side] = cam_id
-        save_config(app_config)
+    if side not in VALID_SIDES or not (0 <= cam_id <= 3):
+        return (
+            jsonify(
+                {"status": "error", "message": "Camera ID must be between 0 and 3"}
+            ),
+            400,
+        )
 
-        # Try to open it, but DO NOT block or reject if the camera isn't immediately found
-        cam_manager.open_camera(cam_id)
-
-        return jsonify({"status": "ok"})
-    return jsonify({"status": "error", "message": "Invalid input"}), 400
+    app_config["cameras"][side] = cam_id
+    save_config(app_config)
+    cam_manager.open_camera(cam_id)
+    return jsonify({"status": "ok"})
 
 
 @app.route("/release_camera", methods=["POST"])
 def release_camera():
     data = request.get_json()
-    cam_id = int(data.get("cam_id"))
+    try:
+        cam_id = int(data.get("cam_id"))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid camera ID value"}), 400
+
     cam_manager.release_camera(cam_id)
     return jsonify({"status": "ok"})
-
-
-@app.route("/get_config")
-def get_config():
-    return jsonify(app_config)
 
 
 @app.route("/fire_servo")
 def fire_servo():
     servo = request.args.get("servo")
-    angle = request.args.get("angle")
-    reset_angle = request.args.get("reset_angle", "0")
-    duration = request.args.get(
-        "duration", app_config["servo_durations"].get(str(servo), 500)
-    )
-    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}&duration={duration}"
+    try:
+        angle = int(request.args.get("angle"))
+        reset_angle = int(request.args.get("reset_angle", 0))
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "Invalid angle value"}), 400
+
+    if (
+        servo not in VALID_SERVOS
+        or not (1 <= angle <= 180)
+        or not (0 <= reset_angle <= 180)
+    ):
+        return (
+            jsonify(
+                {"status": "error", "message": "Invalid servo or angle parameters"}
+            ),
+            400,
+        )
+
+    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}"
     try:
         with httpx.Client() as client:
             resp = client.get(url, timeout=10.0)
@@ -305,7 +320,7 @@ def video_feed(camera_id):
     )
 
 
-# ── token matching ────────────────────────────────────────────────────────────
+# ── token matching ─────────────────────────────────────────────────────────────
 
 TOKENS = [
     {"key": "shinhan", "servo": 1, "camera": "right", "aliases": ["sh", "shinshan"]},
@@ -320,19 +335,20 @@ TOKENS = [
     {"key": "nh", "servo": 5, "camera": "left", "aliases": ["nh"]},
 ]
 
+# Build a flat lookup dict for O(1) matching: alias/key → token
+_TOKEN_LOOKUP = {
+    alias: token
+    for token in TOKENS
+    for alias in ([token["key"]] + token.get("aliases", []))
+}
+
 
 def match_token(message):
-    msg = message.strip().lower()
-    clean = re.sub(r"[^a-z]", "", msg)
-
-    for token in TOKENS:
-        if clean == token["key"] or clean in token.get("aliases", []):
-            return token
-
-    return None
+    clean = re.sub(r"[^a-z]", "", message.strip().lower())
+    return _TOKEN_LOOKUP.get(clean)
 
 
-# ── telegram ──────────────────────────────────────────────────────────────────
+# ── telegram ───────────────────────────────────────────────────────────────────
 
 processing_lock = None
 tg_client = TelegramClient("login", os.getenv("API_ID"), os.getenv("API_HASH"))
@@ -340,15 +356,13 @@ tg_client = TelegramClient("login", os.getenv("API_ID"), os.getenv("API_HASH"))
 
 async def trigger_servo(servo_number):
     angle = app_config["angles"].get(str(servo_number), 180)
-    duration = app_config["servo_durations"].get(str(servo_number), 500)
-    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}&reset_angle=0&duration={duration}"
+    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}&reset_angle=0"
     async with httpx.AsyncClient() as http_client:
         try:
             response = await http_client.get(url, timeout=10.0)
             return response.status_code == 200
         except Exception:
-            pass
-    return False
+            return False
 
 
 @tg_client.on(events.NewMessage(chats="otp_22"))
@@ -404,7 +418,7 @@ def start_telegram_thread():
     loop.run_until_complete(run_telegram())
 
 
-# ── entry point ───────────────────────────────────────────────────────────────
+# ── entry point ────────────────────────────────────────────────────────────────
 
 if __name__ == "__main__":
     os.makedirs("captures", exist_ok=True)

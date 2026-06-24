@@ -155,7 +155,7 @@
             text-transform: uppercase;
         }
 
-        /* ── accordion styling ── */
+        /* ── accordion ── */
         .servo-details {
             background: var(--input-bg);
             border: 1px solid var(--border);
@@ -196,12 +196,6 @@
             background: var(--card-bg);
         }
 
-        .servo-controls-row {
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-        }
-
         .toggle-row {
             display: flex;
             align-items: center;
@@ -221,24 +215,7 @@
             margin: 0;
         }
 
-        /* ── legacy form controls ── */
-        .input-col {
-            display: flex;
-            flex-direction: column;
-            align-items: flex-start;
-            gap: 4px;
-            flex: 1;
-            min-width: 0;
-        }
-
-        .input-col-label {
-            font-size: 11px;
-            font-weight: 600;
-            color: var(--text-muted);
-            white-space: nowrap;
-            line-height: 1;
-        }
-
+        /* ── form controls ── */
         input[type="number"] {
             width: 100%;
             min-width: 0;
@@ -298,12 +275,11 @@
             margin: 16px 0 12px;
         }
 
-        /* ── global servo groups ── */
+        /* ── servo groups ── */
         .servo-group {
             display: flex;
-            align-items: flex-end;
+            align-items: center;
             padding: 7px 0;
-            border-bottom: 1px solid var(--border);
             gap: 6px;
             min-width: 0;
         }
@@ -317,16 +293,21 @@
             font-size: 13px;
             width: 68px;
             flex-shrink: 0;
-            padding-bottom: 5px;
             color: var(--text-main);
         }
 
         .servo-controls {
             display: flex;
             gap: 5px;
-            align-items: flex-end;
+            align-items: center;
+            justify-content: flex-end;
             flex: 1;
             min-width: 0;
+        }
+
+        .servo-controls input[type="number"] {
+            width: 70px;
+            flex-shrink: 0;
         }
 
         /* ── right panel ── */
@@ -454,21 +435,27 @@
             <div class="servo-group">
                 <div class="servo-name">Left (ID)</div>
                 <div class="servo-controls">
-                    <div class="input-col"><input type="number" id="cam-left-input" min="0"></div>
+                    <div class="input-col">
+                        <input type="number" id="cam-left-input" min="0" max="3">
+                    </div>
                     <button class="btn-set" onclick="saveCamera('left')">Set</button>
                 </div>
             </div>
             <div class="servo-group">
                 <div class="servo-name">Right (ID)</div>
                 <div class="servo-controls">
-                    <div class="input-col"><input type="number" id="cam-right-input" min="0"></div>
+                    <div class="input-col">
+                        <input type="number" id="cam-right-input" min="0" max="3">
+                    </div>
                     <button class="btn-set" onclick="saveCamera('right')">Set</button>
                 </div>
             </div>
             <div class="servo-group">
                 <div class="servo-name">Delay (ms)</div>
                 <div class="servo-controls">
-                    <div class="input-col"><input type="number" id="capture-delay-input" min="0" max="30000"></div>
+                    <div class="input-col">
+                        <input type="number" id="capture-delay-input" min="1000" max="5000">
+                    </div>
                     <button class="btn-set" onclick="saveCaptureDelay()">Set</button>
                 </div>
             </div>
@@ -510,7 +497,7 @@
 
     </div>
     <script>
-        // ── constants ─────────────────────────────────────────────────────────────
+        // ── constants ──────────────────────────────────────────────────────────────
 
         const TOKENS = [
             { id: 1, name: 'Shinhan' },
@@ -522,18 +509,18 @@
 
         const SIDES = ['left', 'right'];
 
-        // ── state ─────────────────────────────────────────────────────────────────
+        // ── state ──────────────────────────────────────────────────────────────────
 
         let globalCameras = { left: 0, right: 1 };
         const camOpenId = {};
         const camState = {};
 
-        // ── DOM helpers ───────────────────────────────────────────────────────────
+        // ── DOM helpers ────────────────────────────────────────────────────────────
 
         const el = id => document.getElementById(id);
         const val = id => el(id).value;
 
-        // ── network helpers ───────────────────────────────────────────────────────
+        // ── network helpers ────────────────────────────────────────────────────────
 
         const post = (url, body) => fetch(url, {
             method: 'POST',
@@ -543,14 +530,18 @@
 
         const bustUrl = path => `${path}?t=${Date.now()}`;
 
-        // ── validation helpers ────────────────────────────────────────────────────
+        // ── validation helpers ─────────────────────────────────────────────────────
 
         const isAngleValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 180; };
-        const isDurationValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 10000; };
+        const isIdValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 3; };
+        const isDelayValid = v => { const n = Number(v); return Number.isInteger(n) && n >= 1000 && n <= 5000; };
+
         const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v || lo));
 
         function bindValidatedInput(inputEl, isValid, lo, hi, onChange) {
-            inputEl.addEventListener('input', () => inputEl.classList.toggle('invalid', !isValid(inputEl.value)));
+            inputEl.addEventListener('input', () =>
+                inputEl.classList.toggle('invalid', !isValid(inputEl.value))
+            );
             inputEl.addEventListener('change', () => {
                 if (!isValid(inputEl.value)) inputEl.value = clamp(Number(inputEl.value), lo, hi);
                 inputEl.classList.remove('invalid');
@@ -558,7 +549,7 @@
             });
         }
 
-        // ── theme ─────────────────────────────────────────────────────────────────
+        // ── theme ──────────────────────────────────────────────────────────────────
 
         function applyTheme(dark) {
             document.documentElement.setAttribute('data-theme', dark ? 'dark' : 'light');
@@ -575,7 +566,7 @@
             });
         }
 
-        // ── camera state helpers ──────────────────────────────────────────────────
+        // ── camera state helpers ───────────────────────────────────────────────────
 
         function setCamSideOpen(side, camId) {
             const label = side === 'left' ? 'Left' : 'Right';
@@ -598,14 +589,13 @@
             camState[side] = false;
         }
 
-        // ── servo row builder (accordion) ─────────────────────────────────────────
+        // ── servo row builder (accordion) ──────────────────────────────────────────
 
-        function buildServoRow(token, angle, duration, reTrigger) {
+        function buildServoRow(token, angle, reTrigger) {
             const details = document.createElement('details');
             details.className = 'servo-details';
-            details.name = 'servo-accordion'; // Modern native HTML way to make it exclusive
+            details.name = 'servo-accordion';
 
-            // Fallback for Chromium/browsers that haven't fully rolled out the 'name' attribute on details
             details.addEventListener('toggle', () => {
                 if (details.open) {
                     document.querySelectorAll('.servo-details').forEach(other => {
@@ -617,16 +607,12 @@
             details.innerHTML = `
                 <summary class="servo-summary">${token.name}</summary>
                 <div class="servo-body">
-                    <div class="servo-controls-row">
-                        <div class="input-col">
-                            <span class="input-col-label">Angle (°)</span>
+                    <div class="servo-group" style="padding:0; border-bottom:none;">
+                        <div class="servo-name">Angle (°)</div>
+                        <div class="servo-controls">
                             <input type="number" id="act-${token.id}" value="${angle}" min="1" max="180">
+                            <button class="btn-set" onclick="testServo(${token.id})">Test</button>
                         </div>
-                        <div class="input-col">
-                            <span class="input-col-label">Press Time (ms)</span>
-                            <input type="number" id="dur-${token.id}" value="${duration}" min="0" max="10000">
-                        </div>
-                        <button class="btn-set" onclick="testServo(${token.id})">Test</button>
                     </div>
                     <label class="toggle-row">
                         <input type="checkbox" id="ret-${token.id}" ${reTrigger ? 'checked' : ''}>
@@ -635,11 +621,11 @@
                 </div>
             `;
 
-            bindValidatedInput(details.querySelector(`#act-${token.id}`), isAngleValid, 1, 180,
-                v => post('/set_angle', { servo: token.id, angle: v }));
-
-            bindValidatedInput(details.querySelector(`#dur-${token.id}`), isDurationValid, 0, 10000,
-                v => post('/set_servo_duration', { servo: token.id, duration: v }));
+            bindValidatedInput(
+                details.querySelector(`#act-${token.id}`),
+                isAngleValid, 1, 180,
+                v => post('/set_angle', { servo: token.id, angle: v })
+            );
 
             details.querySelector(`#ret-${token.id}`).addEventListener('change', e => {
                 post('/set_re_trigger', { servo: token.id, re_trigger: e.target.checked });
@@ -648,7 +634,7 @@
             return details;
         }
 
-        // ── init ──────────────────────────────────────────────────────────────────
+        // ── init ───────────────────────────────────────────────────────────────────
 
         async function initConfig() {
             let data;
@@ -660,44 +646,49 @@
             }
 
             globalCameras = data.cameras;
-            SIDES.forEach(side => el(`cam-${side}-input`).value = globalCameras[side]);
-            el('capture-delay-input').value = data.capture_delay_ms ?? 1000;
-
             SIDES.forEach(side => {
-                setCamSideOpen(side, globalCameras[side]);
-                el(`img-cam-${side}`).src = `/video_feed/${globalCameras[side]}`;
+                const input = el(`cam-${side}-input`);
+                input.value = globalCameras[side];
+                bindValidatedInput(input, isIdValid, 0, 3, v => {
+                    globalCameras[side] = v;
+                    post('/set_camera', { side, cam_id: v }).then(res => {
+                        if (res.ok) setCamSideOpen(side, v);
+                    });
+                });
             });
 
-            const durations = data.servo_durations || {};
+            el('capture-delay-input').value = data.capture_delay_ms ?? 1000;
+
+            SIDES.forEach(side => setCamSideOpen(side, globalCameras[side]));
+
             const reTriggers = data.re_trigger || {};
             const container = el('servo-container');
             container.innerHTML = '';
 
-            TOKENS.forEach((token) => {
-                const row = buildServoRow(
+            TOKENS.forEach(token => {
+                container.appendChild(buildServoRow(
                     token,
                     data.angles[token.id] ?? 180,
-                    durations[token.id] ?? 500,
                     reTriggers[token.id] ?? false
-                );
-                container.appendChild(row);
+                ));
             });
         }
 
-        // ── camera actions ────────────────────────────────────────────────────────
+        // ── camera actions ─────────────────────────────────────────────────────────
 
         async function saveCamera(side) {
             const input = val(`cam-${side}-input`);
-            if (input === '') return;
+            if (!isIdValid(input)) {
+                alert("Camera ID must be between 0 and 3");
+                el(`cam-${side}-input`).value = clamp(Number(input), 0, 3);
+                return;
+            }
             const camId = Number(input);
             const res = await post('/set_camera', { side, cam_id: camId });
-
-            // Always treat the input as absolute. Set local variables unconditionally.
-            globalCameras[side] = camId;
-            setCamSideOpen(side, camId);
-
-            // If the backend had an issue responding, log it, but user's choice still applies.
-            if (!res.ok) console.warn("Camera backend check response:", res);
+            if (res.ok) {
+                globalCameras[side] = camId;
+                setCamSideOpen(side, camId);
+            }
         }
 
         async function toggleCamera(side) {
@@ -717,20 +708,24 @@
             }
         }
 
-        // ── servo actions ─────────────────────────────────────────────────────────
+        // ── servo actions ──────────────────────────────────────────────────────────
 
         function testServo(id) {
             const angle = el(`act-${id}`).value;
-            const duration = el(`dur-${id}`).value;
             if (isAngleValid(angle))
-                fetch(`/fire_servo?servo=${id}&angle=${angle}&reset_angle=0&duration=${duration}`);
+                fetch(`/fire_servo?servo=${id}&angle=${angle}&reset_angle=0`);
         }
 
-        // ── misc actions ──────────────────────────────────────────────────────────
+        // ── misc actions ───────────────────────────────────────────────────────────
 
         function saveCaptureDelay() {
             const v = parseInt(val('capture-delay-input'), 10);
-            if (!isNaN(v) && v >= 0) post('/set_capture_delay', { delay_ms: v });
+            if (!isDelayValid(v)) {
+                alert("Delay must be between 1000ms and 5000ms (1–5s)");
+                el('capture-delay-input').value = clamp(v, 1000, 5000);
+                return;
+            }
+            post('/set_capture_delay', { delay_ms: v });
         }
 
         let capturePolling = true;
@@ -746,7 +741,7 @@
             el('latest-img').src = bustUrl('/captures/latest.jpg');
         }
 
-        // ── boot ──────────────────────────────────────────────────────────────────
+        // ── boot ───────────────────────────────────────────────────────────────────
 
         initTheme();
         initConfig();
