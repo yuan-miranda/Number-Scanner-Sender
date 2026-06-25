@@ -355,16 +355,15 @@ function otpPanel() {
 
         // ── model configuration helpers ────────────────────────────
         checkModelsDirty() {
-            // Smart validation: compares workspace against actual backend configuration
-            const savedStr = JSON.stringify(this.config?.models_config || [
+            const saved = JSON.stringify(this.config?.models_config || [
                 { model: 'gemini-3.1-flash-lite', priority: true },
                 { model: 'gemini-3.5-flash', priority: true }
             ]);
-            const currentStr = JSON.stringify(this.localModelsConfig);
-            this.modelsConfigDirty = (savedStr !== currentStr);
+            this.modelsConfigDirty = (saved !== JSON.stringify(this.localModelsConfig));
         },
 
         addModelRow() {
+            if (this.localModelsConfig.length >= 4) return;
             const currentModels = this.localModelsConfig.map(m => m.model);
             const standard = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'];
             const nextAvailable = standard.find(m => !currentModels.includes(m)) || 'gemini-3.1-flash-lite';
@@ -373,7 +372,6 @@ function otpPanel() {
         },
 
         resetModelsConfig() {
-            // Reverts back to factory settings, then checks if that actually differs from saved backend data
             this.localModelsConfig = [
                 { model: 'gemini-3.1-flash-lite', priority: true },
                 { model: 'gemini-3.5-flash', priority: true }
@@ -393,20 +391,14 @@ function otpPanel() {
 
         moveModelUp(index) {
             if (index > 0) {
-                const arr = this.localModelsConfig;
-                const temp = arr[index];
-                arr[index] = arr[index - 1];
-                arr[index - 1] = temp;
+                this.localModelsConfig.splice(index - 1, 2, this.localModelsConfig[index], this.localModelsConfig[index - 1]);
                 this.checkModelsDirty();
             }
         },
 
         moveModelDown(index) {
             if (index < this.localModelsConfig.length - 1) {
-                const arr = this.localModelsConfig;
-                const temp = arr[index];
-                arr[index] = arr[index + 1];
-                arr[index + 1] = temp;
+                this.localModelsConfig.splice(index, 2, this.localModelsConfig[index + 1], this.localModelsConfig[index]);
                 this.checkModelsDirty();
             }
         },
@@ -414,7 +406,6 @@ function otpPanel() {
         async saveModelsConfig() {
             const res = await this.post('/set_models_config', { models_config: this.localModelsConfig });
             if (res.ok) {
-                // Keep the runtime config synchronized with what we just saved
                 if (!this.config) this.config = {};
                 this.config.models_config = JSON.parse(JSON.stringify(this.localModelsConfig));
                 this.checkModelsDirty();

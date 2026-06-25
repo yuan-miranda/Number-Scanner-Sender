@@ -33,12 +33,28 @@ DEFAULT_PROMPT_TEMPLATE = (
 
 
 def render_prompt(template: str, servo_names: dict, target_key: str) -> str:
-    """Replace {servo1}..{servoN} and {target_key} in template with actual names."""
     result = template
     for sid, name in servo_names.items():
         result = result.replace(f"{{servo{sid}}}", name)
-    result = result.replace("{target_key}", target_key)
-    return result
+    return result.replace("{target_key}", target_key)
+
+
+def _build_config(
+    model: str, is_priority: bool, target_key: str, instructions: str
+) -> types.GenerateContentConfig:
+    return types.GenerateContentConfig(
+        system_instruction=instructions,
+        temperature=0.0,
+        response_mime_type="application/json",
+        service_tier="priority" if is_priority else None,
+        response_schema=types.Schema(
+            type=types.Type.OBJECT,
+            properties={
+                target_key: types.Schema(type=types.Type.STRING, nullable=True)
+            },
+            required=[target_key],
+        ),
+    )
 
 
 @retry(
@@ -58,39 +74,24 @@ def get_extracted_otps(
     ref_image = Image.open("captures/reference_image.jpg")
     ref_image.thumbnail((768, 768))
 
-    template = prompt_template if prompt_template else DEFAULT_PROMPT_TEMPLATE
-    names = servo_names if servo_names else {}
-    instructions = render_prompt(template, names, target_key)
+    instructions = render_prompt(
+        prompt_template or DEFAULT_PROMPT_TEMPLATE,
+        servo_names or {},
+        target_key,
+    )
 
-    # Use dynamic model ordering and fallback list from app config if provided
     if models_config and isinstance(models_config, list) and len(models_config) > 0:
-        models_to_run = [m["model"] for m in models_config if m.get("model")]
-        model_priority_map = {
-            m["model"]: m.get("priority", False)
+        models_to_run = [
+            (m["model"], m.get("priority", False))
             for m in models_config
             if m.get("model")
-        }
+        ]
     else:
-        models_to_run = ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
-        model_priority_map = {"gemini-3.1-flash-lite": True, "gemini-3.5-flash": True}
+        models_to_run = [("gemini-3.1-flash-lite", True), ("gemini-3.5-flash", True)]
 
     last_exception = None
-
-    for idx, model in enumerate(models_to_run):
-        is_priority = model_priority_map.get(model, False)
-        config = types.GenerateContentConfig(
-            system_instruction=instructions,
-            temperature=0.0,
-            response_mime_type="application/json",
-            service_tier="priority" if is_priority else None,
-            response_schema=types.Schema(
-                type=types.Type.OBJECT,
-                properties={
-                    target_key: types.Schema(type=types.Type.STRING, nullable=True),
-                },
-                required=[target_key],
-            ),
-        )
+    for idx, (model, is_priority) in enumerate(models_to_run):
+        config = _build_config(model, is_priority, target_key, instructions)
         try:
             response = client.models.generate_content(
                 model=model,
@@ -99,13 +100,10 @@ def get_extracted_otps(
             )
             return json.loads(response.text)
         except Exception as e:
-            print(f"Model {model} failed with error: {e}")
-            next_model_msg = (
-                models_to_run[idx + 1]
-                if idx + 1 < len(models_to_run)
-                else "no more models"
+            next_model = (
+                models_to_run[idx + 1][0] if idx + 1 < len(models_to_run) else "none"
             )
-            print(f"Falling back to {next_model_msg}")
+            print(f"[gemini] {model} failed: {e}. Falling back to {next_model}")
             last_exception = e
 
     raise last_exception

@@ -363,26 +363,6 @@ button {
     flex-shrink: 1;
 }
 
-.servo-group {
-    display: flex;
-    align-items: center;
-    padding: 7px 0;
-    gap: 6px;
-    min-width: 0;
-}
-
-.servo-group:last-child {
-    border-bottom: none;
-}
-
-.servo-name {
-    font-weight: 600;
-    font-size: 13px;
-    width: 68px;
-    flex-shrink: 0;
-    color: var(--text-main);
-}
-
 .servo-controls {
     display: flex;
     gap: 5px;
@@ -407,12 +387,20 @@ button {
 .panel-right {
     flex: 1;
     min-width: 0;
+    display: flex;
+    flex-direction: column;
+}
+
+.panel-right>* {
+    flex: 1;
+    min-height: 0;
 }
 
 .grid-2x2 {
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 8px;
+    align-self: flex-start;
 }
 
 .stream-box {
@@ -515,8 +503,8 @@ button {
     box-shadow: 0 2px 6px var(--shadow);
     display: flex;
     flex-direction: column;
-    height: 100%;
     min-height: 400px;
+    overflow: hidden;
     transition: background .2s, border-color .2s;
 }
 
@@ -594,7 +582,6 @@ button {
     position: relative;
     flex: 1;
     min-height: 0;
-    /* Ensures inner flex items correctly clip overflow */
     display: flex;
     flex-direction: column;
 }
@@ -639,22 +626,15 @@ button {
     outline: none;
 }
 
-.prompt-preview {
-    flex: 1;
-    width: 100%;
-    min-height: 0;
-    /* fixes nested flex overflow boundaries */
-    padding: 18px 20px;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-y: auto;
-    background: var(--input-bg);
+/* preview mode: backdrop carries visible highlighted text, textarea is invisible */
+.prompt-editor-body.is-preview .prompt-textarea-backdrop {
     color: var(--text-main);
-    font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
-    font-size: 15px;
-    line-height: 1.65;
-    transition: background .2s, color .2s;
+}
+
+.prompt-editor-body.is-preview .prompt-textarea {
+    color: transparent;
+    caret-color: transparent;
+    cursor: default;
 }
 
 mark.hl-name {
@@ -696,9 +676,10 @@ mark.hl-placeholder-bg {
 
 /* ── Prompt Config View Styling ── */
 .prompt-config-body {
+    flex: 1;
+    min-height: 0;
     padding: 16px;
     overflow-y: auto;
-    max-height: calc(100% - 50px);
     display: flex;
     flex-direction: column;
 }
@@ -723,7 +704,6 @@ mark.hl-placeholder-bg {
 .config-grid-list {
     display: flex;
     flex-direction: column;
-    /* gap: 2px; */
     margin-bottom: 8px;
 }
 
