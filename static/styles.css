@@ -135,7 +135,7 @@ body {
     flex: 0 0 300px;
     min-width: 0;
     background: var(--card-bg);
-    padding: 16px 16px 2px 16px;
+    padding: 12px 12px 2px 16px;
     border-radius: 5px;
     border: 1px solid var(--border);
     box-shadow: 0 2px 6px var(--shadow);
@@ -174,6 +174,7 @@ body {
     color: var(--text-main);
     user-select: none;
     display: flex;
+    justify-content: space-between;
     align-items: center;
     border-bottom: 1px solid transparent;
     transition: background 0.15s;
@@ -192,8 +193,27 @@ body {
     padding: 12px 14px;
     display: flex;
     flex-direction: column;
-    gap: 8px; /* Tighter layout for interior elements */
+    gap: 8px;
     background: var(--card-bg);
+}
+
+.chevron {
+    transition: transform 0.2s ease;
+    color: var(--text-muted);
+}
+.chevron.open {
+    transform: rotate(180deg);
+}
+.servo-details[open] .accordion-chevron {
+    transform: rotate(180deg);
+}
+
+.prompt-menu-container.is-open {
+    border-color: var(--border);
+}
+.prompt-menu-container.is-open .servo-summary {
+    background: var(--btn-hover-bg);
+    border-bottom-color: var(--border);
 }
 
 .toggle-row {
@@ -216,16 +236,16 @@ body {
     margin: 0;
 }
 
-/* ── label-on-top fields (Angle / Name / Aliases) ── */
+/* ── label-on-top fields ── */
 .servo-field {
     display: flex;
     flex-direction: column;
-    gap: 2px; /* Pulls the label and input box closely together */
+    gap: 2px;
 }
 
 .field-label {
     font-weight: 600;
-    font-size: 10px; /* Reduced to avoid looking too bulky */
+    font-size: 10px;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: .05em;
@@ -233,9 +253,8 @@ body {
     align-items: center;
 }
 
-/* Unsaved state indicator */
 .unsaved {
-    color: #d97706; /* Amber warning color */
+    color: #d97706;
     font-size: 14px;
     margin-left: 3px;
     line-height: 1;
@@ -247,9 +266,6 @@ body {
     color: #fbbf24;
 }
 
-/* Inside the servo submenu, let the input fill the row (Test sits beside it
-   at its own width) instead of the fixed 70px used by Camera Config's
-   inline label-left rows. */
 .servo-field .servo-controls input[type="number"] {
     width: auto;
     flex: 1;
@@ -317,13 +333,22 @@ button {
     border-color: var(--btn-hover-border);
 }
 
+.btn-dirty {
+    border-color: #d97706 !important;
+    color: #d97706 !important;
+}
+
+[data-theme="dark"] .btn-dirty {
+    border-color: #fbbf24 !important;
+    color: #fbbf24 !important;
+}
+
 .section-divider {
     border: none;
     border-top: 1px solid var(--border);
     margin: 16px 0 12px;
 }
 
-/* Camera config label-on-top fields — same pattern as .servo-field */
 .cam-field {
     margin-bottom: 8px;
 }
@@ -335,7 +360,6 @@ button {
     flex-shrink: 1;
 }
 
-/* ── servo groups ── */
 .servo-group {
     display: flex;
     align-items: center;
@@ -474,8 +498,190 @@ button {
     .dashboard-container {
         flex-direction: column;
     }
-
     .panel-left {
         flex: none;
     }
+}
+
+/* ── prompt editor pane ── */
+.prompt-editor-pane {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    box-shadow: 0 2px 6px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 400px;
+    transition: background .2s, border-color .2s;
+}
+
+.prompt-editor-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    gap: 10px;
+    flex-wrap: wrap;
+    background: var(--btn-bg);
+}
+
+.prompt-tab-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.prompt-tab {
+    padding: 4px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    background: transparent;
+    border: 1px solid var(--btn-border);
+    border-radius: 2px;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all .15s;
+}
+
+.prompt-tab.active {
+    background: var(--card-bg);
+    color: var(--text-main);
+    border-color: var(--text-muted);
+}
+
+.prompt-tab:not(.active):hover {
+    background: var(--btn-hover-bg);
+}
+
+.prompt-hint {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-left: 4px;
+}
+
+.prompt-hint code {
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    padding: 0 3px;
+    color: var(--text-main);
+}
+
+.prompt-action-row {
+    display: flex;
+    gap: 6px;
+    flex-shrink: 0;
+}
+
+.prompt-action-btn {
+    font-size: 12px;
+    padding: 4px 14px;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.prompt-editor-body {
+    position: relative;
+    flex: 1;
+    min-height: 0; /* Ensures inner flex items correctly clip overflow */
+    display: flex;
+    flex-direction: column;
+}
+
+.prompt-textarea-backdrop {
+    position: absolute;
+    inset: 0;
+    padding: 18px 20px;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    color: transparent; /* hide standard text, keep highlight background */
+    pointer-events: none;
+    z-index: 1;
+    font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
+    font-size: 15px;
+    line-height: 1.65;
+    background: var(--input-bg);
+}
+
+.prompt-textarea {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    padding: 18px 20px;
+    margin: 0;
+    border: none;
+    resize: none;
+    font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
+    font-size: 15px; 
+    line-height: 1.65;
+    background: transparent;
+    color: var(--text-main);
+    z-index: 2;
+    overflow-y: auto;
+    caret-color: var(--text-main);
+}
+
+.prompt-textarea:focus {
+    outline: none;
+}
+
+.prompt-preview {
+    flex: 1;
+    width: 100%;
+    min-height: 0; /* fixes nested flex overflow boundaries */
+    padding: 18px 20px;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-y: auto;
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
+    font-size: 15px; 
+    line-height: 1.65;
+    transition: background .2s, color .2s;
+}
+
+mark.hl-name {
+    background-color: rgba(43, 158, 250, 0.2);
+    color: #0284c7;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+[data-theme="dark"] mark.hl-name {
+    background-color: rgba(56, 189, 248, 0.2);
+    color: #38bdf8;
+}
+
+mark.hl-placeholder {
+    background-color: rgba(251, 146, 60, 0.2);
+    color: #ea580c;
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: 600;
+}
+
+[data-theme="dark"] mark.hl-placeholder {
+    background-color: rgba(251, 146, 60, 0.2);
+    color: #fb923c;
+}
+
+/* specifically for the text edit overlay highlights */
+mark.hl-placeholder-bg {
+    background-color: rgba(251, 146, 60, 0.2);
+    color: transparent;
+    border-radius: 4px;
+}
+[data-theme="dark"] mark.hl-placeholder-bg {
+    background-color: rgba(251, 146, 60, 0.2);
 }

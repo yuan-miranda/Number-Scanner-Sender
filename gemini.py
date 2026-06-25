@@ -14,13 +14,40 @@ from tenacity import (
 load_dotenv()
 
 
+DEFAULT_PROMPT_TEMPLATE = (
+    "Extract the 6-digit OTP code strictly for the '{target_key}' token into a JSON object.\n"
+    "For the camera view showing THREE OTP devices:\n"
+    "- '{servo1}': The LEFT BOTTOM display.\n"
+    "- '{servo2}': The LEFT TOP display.\n"
+    "- '{servo3}': The RIGHTMOST display (purple).\n"
+    "For the camera view showing TWO OTP displays:\n"
+    "- '{servo4}': The TOP display (labeled 'kakaobank').\n"
+    "- '{servo5}': The BOTTOM display (labeled 'NH').\n\n"
+    "Rules:\n"
+    "- Only extract the 6-digit number visible on the device screen for '{target_key}'.\n"
+    "- If the '{target_key}' device is completely missing, or its screen is blank/off, return null.\n"
+    "- Ignore all other devices in the image.\n"
+    "- {servo1} and {servo2} are identical, so follow the guide labelled reference image attached.\n"
+    "- Output MUST strictly use this exact key: '{target_key}'."
+)
+
+
+def render_prompt(template: str, servo_names: dict, target_key: str) -> str:
+    """Replace {servo1}..{servoN} and {target_key} in template with actual names."""
+    result = template
+    for sid, name in servo_names.items():
+        result = result.replace(f"{{servo{sid}}}", name)
+    result = result.replace("{target_key}", target_key)
+    return result
+
+
 @retry(
     stop=stop_after_attempt(3),
     wait=wait_exponential(multiplier=1, min=2, max=10),
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-def get_extracted_otps(image_path, target_key):
+def get_extracted_otps(image_path, target_key, prompt_template=None, servo_names=None):
     client = genai.Client(api_key=os.getenv("API_KEY"))
 
     image = Image.open(image_path)
@@ -29,22 +56,9 @@ def get_extracted_otps(image_path, target_key):
     ref_image = Image.open("captures/reference_image.jpg")
     ref_image.thumbnail((768, 768))
 
-    instructions = (
-        f"Extract the 6-digit OTP code strictly for the '{target_key}' token into a JSON object.\n"
-        "For the camera view showing THREE OTP devices:\n"
-        "- 'shinhan': The LEFT BOTTOM display.\n"
-        "- 'kfcc': The LEFT TOP display.\n"
-        "- 'woori': The RIGHTMOST display (purple).\n"
-        "For the camera view showing TWO OTP displays:\n"
-        "- 'kakao': The TOP display (labeled 'kakaobank').\n"
-        "- 'nh': The BOTTOM display (labeled 'NH').\n\n"
-        f"Rules:\n"
-        "- Only extract the 6-digit number visible on the device screen for '{target_key}'.\n"
-        "- If the '{target_key}' device is completely missing, or its screen is blank/off, return null.\n"
-        "- Ignore all other devices in the image.\n"
-        "- Shinhan and kfcc are identical, so follow the guide labelled reference image attached.\n"
-        f"- Output MUST strictly use this exact key: '{target_key}'."
-    )
+    template = prompt_template if prompt_template else DEFAULT_PROMPT_TEMPLATE
+    names = servo_names if servo_names else {}
+    instructions = render_prompt(template, names, target_key)
 
     config = types.GenerateContentConfig(
         system_instruction=instructions,

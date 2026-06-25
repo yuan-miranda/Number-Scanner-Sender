@@ -17,7 +17,7 @@ from flask import (
     send_from_directory,
 )
 from dotenv import load_dotenv
-from gemini import get_extracted_otps
+from gemini import get_extracted_otps, DEFAULT_PROMPT_TEMPLATE, render_prompt
 from telethon import TelegramClient, events
 
 load_dotenv()
@@ -48,6 +48,7 @@ DEFAULT_CONFIG = {
     "servo_meta": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
+    "prompt_template": "",  # empty = use DEFAULT_PROMPT_TEMPLATE in gemini.py
 }
 VALID_SIDES = {"left", "right"}
 
@@ -299,6 +300,25 @@ def set_capture_delay():
     return jsonify({"status": "ok"})
 
 
+@app.route("/get_prompt")
+def get_prompt():
+    template = app_config.get("prompt_template", "") or ""
+    default = DEFAULT_PROMPT_TEMPLATE
+    return jsonify({"prompt_template": template, "default_template": default})
+
+
+@app.route("/set_prompt", methods=["POST"])
+def set_prompt():
+    data = request.get_json()
+    template = data.get("prompt_template", "")
+    if not isinstance(template, str):
+        return jsonify({"status": "error", "message": "Invalid prompt value"}), 400
+    # empty string = revert to default
+    app_config["prompt_template"] = template.strip()
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
@@ -471,7 +491,14 @@ async def handle_otp_requests(event):
         else:
             image_path = None
 
-        otp_data = get_extracted_otps(image_path, token["key"]) if image_path else None
+        otp_data = None
+        if image_path:
+            template = app_config.get("prompt_template") or None
+            servo_names = {
+                sid: (app_config.get("servo_meta", {}).get(sid, {}).get("name", "").strip() or f"servo{sid}")
+                for sid in sorted(VALID_SERVOS, key=int)
+            }
+            otp_data = get_extracted_otps(image_path, token["key"], template, servo_names)
         reply_text = "null"
         if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
             reply_text = str(otp_data[token["key"]]).strip()

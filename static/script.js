@@ -18,6 +18,13 @@ function otpPanel() {
         captureMissing: false,
         capturePolling: true,
 
+        // ── prompt editor state ────────────────────────────────────
+        promptOpen: false,
+        promptText: '',
+        defaultPromptText: '',
+        savedPromptText: '',
+        promptPreviewMode: false,
+
         // ── init ───────────────────────────────────────────────────
         init() {
             const saved = localStorage.getItem('theme');
@@ -55,15 +62,11 @@ function otpPanel() {
         isIdValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 3; },
         isDelayValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 1000 && n <= 5000; },
 
-        // Letters/spaces only, 1–12 chars. Empty is OK (clears the custom name).
         isNameValid(v) {
             const s = v.trim();
             return s === '' || /^[A-Za-z ]{1,12}$/.test(s);
         },
 
-        // Comma-separated list. Empty is OK (clears all aliases). Otherwise:
-        //  - no blank entries (catches "a,,b", leading/trailing commas, trailing space-only segments)
-        //  - each alias is letters-only, 1–24 chars (the limit is per entry, not the whole string)
         isAliasListValid(v) {
             const s = v.trim();
             if (s === '') return true;
@@ -72,7 +75,6 @@ function otpPanel() {
             return parts.every(p => /^[A-Za-z]{1,24}$/.test(p.trim()));
         },
 
-        // Cleans a raw alias string into a deduped, trimmed array.
         parseAliases(v) {
             const seen = new Set();
             v.split(',').map(a => a.trim()).filter(Boolean).forEach(a => seen.add(a));
@@ -106,21 +108,19 @@ function otpPanel() {
 
             this.configLoaded = true;
             this.SIDES.forEach(side => this.openCamera(side, this.cameras[side]));
+            await this.loadPrompt();
         },
 
-        // ── servo label ────────────────────────────────────────────
         servoLabel(token) {
             return token.displayName || `Servo ${token.id}`;
         },
 
         // ── angle ──────────────────────────────────────────────────
-        // Only marks invalid — never touches this.angles
         onAngleInput(e) {
             const ok = this.isAngleValid(e.target.value);
             e.target.classList.toggle('invalid', !ok);
         },
 
-        // Auto-saves on blur — this.angles is only written here (and on loadConfig)
         saveAngleOnBlur(e, id) {
             const input = e.target;
             const v = Number(input.value);
@@ -139,13 +139,11 @@ function otpPanel() {
         },
 
         // ── name ───────────────────────────────────────────────────
-        // Only marks invalid — never touches token.displayName
         onNameInput(e) {
             const ok = this.isNameValid(e.target.value);
             e.target.classList.toggle('invalid', !ok);
         },
 
-        // Reads DOM directly — token.displayName written here + loadConfig
         saveName(el, token) {
             const input = el.closest('.servo-controls').querySelector('input.name-input');
             if (!this.isNameValid(input.value)) {
@@ -157,18 +155,16 @@ function otpPanel() {
             const name = input.value.trim();
             token.displayName = name;
             this.post('/set_servo_meta', { servo: token.id, name });
-            input.value = name; // Sync input visually to trimmed text
+            input.value = name; 
             return true;
         },
 
         // ── aliases ────────────────────────────────────────────────
-        // Only marks invalid — never touches token.aliasString
         onAliasInput(e) {
             const ok = this.isAliasListValid(e.target.value);
             e.target.classList.toggle('invalid', !ok);
         },
 
-        // Reads DOM directly — token.aliasString written here + loadConfig
         saveAliases(el, token) {
             const input = el.closest('.servo-controls').querySelector('input.alias-input');
             if (!this.isAliasListValid(input.value)) {
@@ -180,7 +176,7 @@ function otpPanel() {
             const aliases = this.parseAliases(input.value);
             token.aliasString = aliases.join(', ');
             this.post('/set_servo_meta', { servo: token.id, aliases });
-            input.value = token.aliasString; // Sync input visually to clean text
+            input.value = token.aliasString; 
             return true;
         },
 
@@ -219,7 +215,6 @@ function otpPanel() {
             }
         },
 
-        // Reads DOM directly via el — this.cameras[side] only written here + loadConfig
         async saveCamera(el, side) {
             const input = el.closest('.cam-field').querySelector('input[type=number]');
             const v = Number(input.value);
@@ -234,7 +229,6 @@ function otpPanel() {
             if (res.ok) this.openCamera(side, v);
         },
 
-        // Only marks invalid — never touches this.cameras
         onCamIdInput(e) {
             const ok = this.isIdValid(e.target.value);
             e.target.classList.toggle('invalid', !ok);
@@ -250,13 +244,11 @@ function otpPanel() {
         },
 
         // ── delay ──────────────────────────────────────────────────
-        // Only marks invalid — never touches this.captureDelay
         onDelayInput(e) {
             const ok = this.isDelayValid(e.target.value);
             e.target.classList.toggle('invalid', !ok);
         },
 
-        // Reads DOM directly via el
         saveCaptureDelay(el) {
             const input = el.closest('.cam-field').querySelector('input[type=number]');
             const v = Number(input.value);
@@ -270,10 +262,76 @@ function otpPanel() {
             this.post('/set_capture_delay', { delay_ms: v });
         },
 
-        // ── capture ────────────────────────────────────────────────
         reloadCapture() {
             this.capturePolling = true;
             this.latestSrc = this.bustUrl('/captures/latest.jpg');
+        },
+
+        // ── prompt editor ──────────────────────────────────────────
+        async loadPrompt() {
+            try {
+                const data = await fetch('/get_prompt').then(r => r.json());
+                this.defaultPromptText = data.default_template || '';
+                this.promptText = data.prompt_template || this.defaultPromptText;
+                this.savedPromptText = this.promptText;
+            } catch {
+                this.promptText = '';
+                this.savedPromptText = '';
+            }
+        },
+
+        togglePromptEditor() {
+            this.promptOpen = !this.promptOpen;
+            if (!this.promptOpen) this.promptPreviewMode = false;
+        },
+
+        promptServoNames() {
+            const names = {};
+            this.tokens.forEach(t => {
+                names[t.id] = t.displayName || `servo${t.id}`;
+            });
+            return names;
+        },
+
+        escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, tag => ({
+                '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;'
+            }[tag] || tag));
+        },
+
+        // 
+        promptBackdropHTML() {
+            let out = this.escapeHTML(this.promptText);
+            out = out.replace(/\{(servo\d+|target_key)\}/g, match => `<mark class="hl-placeholder-bg">${match}</mark>`);
+            if (out.endsWith('\n')) out += ' '; 
+            return out;
+        },
+
+        promptPreviewHTML() {
+            let out = this.escapeHTML(this.promptText);
+            const names = this.promptServoNames();
+            
+            Object.entries(names).forEach(([id, name]) => {
+                const safeName = this.escapeHTML(name);
+                const placeholder = `{servo${id}}`;
+                out = out.split(placeholder).join(`<mark class="hl-name">${safeName}</mark>`);
+            });
+
+            out = out.replace(/\{(servo\d+|target_key)\}/g, match => `<mark class="hl-placeholder">${match}</mark>`);
+            return out;
+        },
+
+        async savePrompt() {
+            const res = await this.post('/set_prompt', { prompt_template: this.promptText });
+            if (res.ok) {
+                this.savedPromptText = this.promptText;
+            }
+        },
+
+        resetPrompt() {
+            // Only resets locally. Does not auto-post to server.
+            this.promptText = this.defaultPromptText;
         },
     };
 }
