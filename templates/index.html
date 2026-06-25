@@ -92,8 +92,8 @@
             <h2 style="margin-top:0">Camera Config</h2>
 
             <template x-for="side in SIDES" :key="side">
-                <div class="servo-group">
-                    <div class="servo-name" x-text="side.charAt(0).toUpperCase() + side.slice(1) + ' (ID)'"></div>
+                <div class="servo-field cam-field">
+                    <div class="field-label" x-text="(side.charAt(0).toUpperCase() + side.slice(1)) + ' Camera (ID)'"></div>
                     <div class="servo-controls">
                         <input type="number" :value="cameras[side]" min="0" max="3" @input="onCamIdInput($event)">
                         <button class="btn-set" @click="saveCamera($el, side)">Set</button>
@@ -101,8 +101,8 @@
                 </div>
             </template>
 
-            <div class="servo-group">
-                <div class="servo-name">Delay (ms)</div>
+            <div class="servo-field cam-field">
+                <div class="field-label">Capture Delay (ms)</div>
                 <div class="servo-controls">
                     <input type="number" :value="captureDelay" min="1000" max="5000" @input="onDelayInput($event)">
                     <button class="btn-set" @click="saveCaptureDelay($el)">Set</button>

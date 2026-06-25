@@ -96,6 +96,7 @@ app_config = load_config()
 
 # ── fetch servo count from ESP32 ───────────────────────────────────────────────
 
+
 def fetch_servo_count() -> int:
     """Ask the ESP32 how many servos it has.  Falls back to 5 on any error."""
     try:
@@ -103,7 +104,9 @@ def fetch_servo_count() -> int:
             resp = client.get(f"http://{ESP32_IP}/servo_count", timeout=5.0)
             return int(resp.json()["count"])
     except Exception as exc:
-        logging.warning("Could not fetch servo count from ESP32 (%s); defaulting to 5", exc)
+        logging.warning(
+            "Could not fetch servo count from ESP32 (%s); defaulting to 5", exc
+        )
         return 5
 
 
@@ -221,7 +224,10 @@ def set_angle():
         return jsonify({"status": "error", "message": "Invalid angle value"}), 400
 
     if servo not in VALID_SERVOS or not (1 <= angle <= 180):
-        return jsonify({"status": "error", "message": "Angle must be between 1 and 180"}), 400
+        return (
+            jsonify({"status": "error", "message": "Angle must be between 1 and 180"}),
+            400,
+        )
 
     app_config["angles"][servo] = angle
     save_config(app_config)
@@ -278,7 +284,15 @@ def set_capture_delay():
         return jsonify({"status": "error", "message": "Invalid delay value"}), 400
 
     if not (1000 <= delay <= 5000):
-        return jsonify({"status": "error", "message": "Delay must be between 1000ms and 5000ms"}), 400
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "Delay must be between 1000ms and 5000ms",
+                }
+            ),
+            400,
+        )
 
     app_config["capture_delay_ms"] = delay
     save_config(app_config)
@@ -295,7 +309,12 @@ def set_camera():
         return jsonify({"status": "error", "message": "Invalid camera ID value"}), 400
 
     if side not in VALID_SIDES or not (0 <= cam_id <= 3):
-        return jsonify({"status": "error", "message": "Camera ID must be between 0 and 3"}), 400
+        return (
+            jsonify(
+                {"status": "error", "message": "Camera ID must be between 0 and 3"}
+            ),
+            400,
+        )
 
     app_config["cameras"][side] = cam_id
     save_config(app_config)
@@ -329,7 +348,12 @@ def fire_servo():
         or not (1 <= angle <= 180)
         or not (0 <= reset_angle <= 180)
     ):
-        return jsonify({"status": "error", "message": "Invalid servo or angle parameters"}), 400
+        return (
+            jsonify(
+                {"status": "error", "message": "Invalid servo or angle parameters"}
+            ),
+            400,
+        )
 
     url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}"
     try:
@@ -389,7 +413,7 @@ def _build_token_lookup():
         key = re.sub(r"[^a-z0-9]", "", name.lower()) if name else f"servo{sid}"
         camera_side = SERVO_CAMERA_SIDE.get(sid, "left")
         token = {"key": key, "servo": int(sid), "camera": camera_side}
-        for alias in ([key] + aliases):
+        for alias in [key] + aliases:
             clean = re.sub(r"[^a-z]", "", alias)
             if clean:
                 lookup[clean] = token
@@ -447,7 +471,7 @@ async def handle_otp_requests(event):
         else:
             image_path = None
 
-        otp_data = get_extracted_otps(image_path) if image_path else None
+        otp_data = get_extracted_otps(image_path, token["key"]) if image_path else None
         reply_text = "null"
         if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
             reply_text = str(otp_data[token["key"]]).strip()

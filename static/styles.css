@@ -323,6 +323,18 @@ button {
     margin: 16px 0 12px;
 }
 
+/* Camera config label-on-top fields — same pattern as .servo-field */
+.cam-field {
+    margin-bottom: 8px;
+}
+
+.cam-field .servo-controls input[type="number"] {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    flex-shrink: 1;
+}
+
 /* ── servo groups ── */
 .servo-group {
     display: flex;
@@ -454,6 +466,8 @@ button {
 
 .empty-slot {
     aspect-ratio: 4 / 3;
+    visibility: hidden;
+    pointer-events: none;
 }
 
 @media (max-width: 900px) {

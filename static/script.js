@@ -221,7 +221,7 @@ function otpPanel() {
 
         // Reads DOM directly via el — this.cameras[side] only written here + loadConfig
         async saveCamera(el, side) {
-            const input = el.closest('.servo-group').querySelector('input[type=number]');
+            const input = el.closest('.cam-field').querySelector('input[type=number]');
             const v = Number(input.value);
             if (!this.isIdValid(v)) {
                 input.classList.add('invalid');
@@ -258,7 +258,7 @@ function otpPanel() {
 
         // Reads DOM directly via el
         saveCaptureDelay(el) {
-            const input = el.closest('.servo-group').querySelector('input[type=number]');
+            const input = el.closest('.cam-field').querySelector('input[type=number]');
             const v = Number(input.value);
             if (!this.isDelayValid(v)) {
                 input.classList.add('invalid');
