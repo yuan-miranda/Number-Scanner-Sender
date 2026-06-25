@@ -40,14 +40,23 @@ logging.getLogger("werkzeug").addFilter(SilenceRoutes())
 app = Flask(__name__)
 ESP32_IP = os.getenv("ESP32_IP")
 CONFIG_FILE = "config.json"
+
+# servo_meta shape: { "1": { "name": "Shinhan", "aliases": ["sh", "shinshan"] }, ... }
 DEFAULT_CONFIG = {
-    "angles": {"1": 180, "2": 180, "3": 180, "4": 180, "5": 180},
-    "re_trigger": {"1": False, "2": False, "3": False, "4": False, "5": False},
+    "angles": {},
+    "re_trigger": {},
+    "servo_meta": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
 }
-VALID_SERVOS = {"1", "2", "3", "4", "5"}
 VALID_SIDES = {"left", "right"}
+
+# populated at startup once we know the servo count
+VALID_SERVOS: set[str] = set()
+
+
+def _servo_ids(count: int) -> list[str]:
+    return [str(i) for i in range(1, count + 1)]
 
 
 def load_config():
@@ -55,13 +64,9 @@ def load_config():
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
-            if "angles" not in data:
-                return DEFAULT_CONFIG.copy()
             for key, val in DEFAULT_CONFIG.items():
                 if key not in data:
                     data[key] = val
-            for servo_id in VALID_SERVOS:
-                data["re_trigger"].setdefault(servo_id, False)
             return data
         except Exception:
             pass
@@ -78,7 +83,34 @@ def save_config(config_dict):
         pass
 
 
+def ensure_servo_slots(config_dict, servo_ids: list[str]):
+    """Guarantee that angles / re_trigger / servo_meta have an entry for every servo."""
+    for sid in servo_ids:
+        config_dict["angles"].setdefault(sid, 180)
+        config_dict["re_trigger"].setdefault(sid, False)
+        config_dict["servo_meta"].setdefault(sid, {"name": "", "aliases": []})
+
+
 app_config = load_config()
+
+
+# ── fetch servo count from ESP32 ───────────────────────────────────────────────
+
+def fetch_servo_count() -> int:
+    """Ask the ESP32 how many servos it has.  Falls back to 5 on any error."""
+    try:
+        with httpx.Client() as client:
+            resp = client.get(f"http://{ESP32_IP}/servo_count", timeout=5.0)
+            return int(resp.json()["count"])
+    except Exception as exc:
+        logging.warning("Could not fetch servo count from ESP32 (%s); defaulting to 5", exc)
+        return 5
+
+
+_servo_count = fetch_servo_count()
+VALID_SERVOS = set(_servo_ids(_servo_count))
+ensure_servo_slots(app_config, _servo_ids(_servo_count))
+save_config(app_config)
 
 
 # ── camera manager ─────────────────────────────────────────────────────────────
@@ -168,7 +200,15 @@ def get_capture(filename):
 
 @app.route("/get_config")
 def get_config():
-    return jsonify(app_config)
+    # Always include the live servo count so the frontend is in sync
+    payload = dict(app_config)
+    payload["servo_count"] = _servo_count
+    return jsonify(payload)
+
+
+@app.route("/servo_count")
+def servo_count_route():
+    return jsonify({"count": _servo_count})
 
 
 @app.route("/set_angle", methods=["POST"])
@@ -181,10 +221,7 @@ def set_angle():
         return jsonify({"status": "error", "message": "Invalid angle value"}), 400
 
     if servo not in VALID_SERVOS or not (1 <= angle <= 180):
-        return (
-            jsonify({"status": "error", "message": "Angle must be between 1 and 180"}),
-            400,
-        )
+        return jsonify({"status": "error", "message": "Angle must be between 1 and 180"}), 400
 
     app_config["angles"][servo] = angle
     save_config(app_config)
@@ -205,6 +242,33 @@ def set_re_trigger():
     return jsonify({"status": "ok"})
 
 
+@app.route("/set_servo_meta", methods=["POST"])
+def set_servo_meta():
+    """Update the display name and/or aliases for a single servo."""
+    data = request.get_json()
+    servo = str(data.get("servo"))
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+
+    meta = app_config["servo_meta"].setdefault(servo, {"name": "", "aliases": []})
+
+    if "name" in data:
+        meta["name"] = str(data["name"]).strip()
+
+    if "aliases" in data:
+        # Accept either a list or a comma-separated string
+        raw = data["aliases"]
+        if isinstance(raw, list):
+            aliases = [a.strip() for a in raw if str(a).strip()]
+        else:
+            aliases = [a.strip() for a in str(raw).split(",") if a.strip()]
+        meta["aliases"] = aliases
+
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/set_capture_delay", methods=["POST"])
 def set_capture_delay():
     data = request.get_json()
@@ -214,15 +278,7 @@ def set_capture_delay():
         return jsonify({"status": "error", "message": "Invalid delay value"}), 400
 
     if not (1000 <= delay <= 5000):
-        return (
-            jsonify(
-                {
-                    "status": "error",
-                    "message": "Delay must be between 1000ms and 5000ms",
-                }
-            ),
-            400,
-        )
+        return jsonify({"status": "error", "message": "Delay must be between 1000ms and 5000ms"}), 400
 
     app_config["capture_delay_ms"] = delay
     save_config(app_config)
@@ -239,12 +295,7 @@ def set_camera():
         return jsonify({"status": "error", "message": "Invalid camera ID value"}), 400
 
     if side not in VALID_SIDES or not (0 <= cam_id <= 3):
-        return (
-            jsonify(
-                {"status": "error", "message": "Camera ID must be between 0 and 3"}
-            ),
-            400,
-        )
+        return jsonify({"status": "error", "message": "Camera ID must be between 0 and 3"}), 400
 
     app_config["cameras"][side] = cam_id
     save_config(app_config)
@@ -278,12 +329,7 @@ def fire_servo():
         or not (1 <= angle <= 180)
         or not (0 <= reset_angle <= 180)
     ):
-        return (
-            jsonify(
-                {"status": "error", "message": "Invalid servo or angle parameters"}
-            ),
-            400,
-        )
+        return jsonify({"status": "error", "message": "Invalid servo or angle parameters"}), 400
 
     url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}"
     try:
@@ -322,30 +368,38 @@ def video_feed(camera_id):
 
 # ── token matching ─────────────────────────────────────────────────────────────
 
-TOKENS = [
-    {"key": "shinhan", "servo": 1, "camera": "right", "aliases": ["sh", "shinshan"]},
-    {"key": "kfcc", "servo": 2, "camera": "right", "aliases": ["kfcc", "kfc"]},
-    {"key": "kakao", "servo": 3, "camera": "left", "aliases": ["kakao", "cacao"]},
-    {
-        "key": "woori",
-        "servo": 4,
-        "camera": "right",
-        "aliases": ["wr", "woori", "wori", "wuri"],
-    },
-    {"key": "nh", "servo": 5, "camera": "left", "aliases": ["nh"]},
-]
-
-# Build a flat lookup dict for O(1) matching: alias/key → token
-_TOKEN_LOOKUP = {
-    alias: token
-    for token in TOKENS
-    for alias in ([token["key"]] + token.get("aliases", []))
+# Hardcoded camera side mapping (servo id → which camera to use for capture).
+# Edit this if your physical setup changes.
+SERVO_CAMERA_SIDE = {
+    "1": "right",
+    "2": "right",
+    "3": "left",
+    "4": "right",
+    "5": "left",
 }
 
 
-def match_token(message):
+def _build_token_lookup():
+    """Build O(1) alias → servo dict from live config."""
+    lookup: dict[str, dict] = {}
+    for sid in sorted(VALID_SERVOS, key=int):
+        meta = app_config.get("servo_meta", {}).get(sid, {})
+        name = meta.get("name", "").strip()
+        aliases = [a.strip().lower() for a in meta.get("aliases", []) if a.strip()]
+        key = re.sub(r"[^a-z0-9]", "", name.lower()) if name else f"servo{sid}"
+        camera_side = SERVO_CAMERA_SIDE.get(sid, "left")
+        token = {"key": key, "servo": int(sid), "camera": camera_side}
+        for alias in ([key] + aliases):
+            clean = re.sub(r"[^a-z]", "", alias)
+            if clean:
+                lookup[clean] = token
+    return lookup
+
+
+def match_token(message: str):
+    lookup = _build_token_lookup()
     clean = re.sub(r"[^a-z]", "", message.strip().lower())
-    return _TOKEN_LOOKUP.get(clean)
+    return lookup.get(clean)
 
 
 # ── telegram ───────────────────────────────────────────────────────────────────
@@ -353,7 +407,6 @@ def match_token(message):
 processing_lock = None
 tg_client = TelegramClient("login", os.getenv("API_ID"), os.getenv("API_HASH"))
 group_chat_id = int(os.getenv("GROUP_CHAT_ID"))
-
 
 
 async def trigger_servo(servo_number):
@@ -371,7 +424,6 @@ async def trigger_servo(servo_number):
 async def handle_otp_requests(event):
     if event.chat_id != group_chat_id:
         return
-
     if event.out:
         return
 

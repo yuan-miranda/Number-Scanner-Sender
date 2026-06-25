@@ -6,425 +6,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>OTP Control Panel</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
-    <style>
-        html, body {
-            -webkit-user-select: none;
-            -moz-user-select: none;
-            -ms-user-select: none;
-            user-select: none;
-        }
-
-        /* ── theme tokens ── */
-        :root {
-            --bg: #f5f5f5;
-            --card-bg: #ffffff;
-            --border: #e0e0e0;
-            --input-bg: #ffffff;
-            --input-border: #cccccc;
-            --primary: #000000;
-            --text-main: #111111;
-            --text-muted: #777777;
-            --btn-bg: #eeeeee;
-            --btn-color: #222222;
-            --btn-border: #cccccc;
-            --btn-hover-bg: #e0e0e0;
-            --btn-hover-border: #aaaaaa;
-            --shadow: rgba(0, 0, 0, .07);
-            --invalid-bg: #fff5f5;
-        }
-
-        [data-theme="dark"] {
-            --bg: #0a0a0a;
-            --card-bg: #141414;
-            --border: #2a2a2a;
-            --input-bg: #1c1c1c;
-            --input-border: #333333;
-            --primary: #ffffff;
-            --text-main: #f0f0f0;
-            --text-muted: #888888;
-            --btn-bg: #222222;
-            --btn-color: #dddddd;
-            --btn-border: #333333;
-            --btn-hover-bg: #2e2e2e;
-            --btn-hover-border: #555555;
-            --shadow: rgba(0, 0, 0, .4);
-            --invalid-bg: #1e0e0e;
-        }
-
-        /* ── base ── */
-        *,
-        *::before,
-        *::after {
-            box-sizing: border-box;
-        }
-
-        body {
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            background: var(--bg);
-            color: var(--text-main);
-            transition: background .2s, color .2s;
-        }
-
-        /* ── top bar ── */
-        .topbar {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            max-width: 1400px;
-            margin: 0 auto 16px;
-        }
-
-        .topbar-title {
-            font-size: .85rem;
-            font-weight: 700;
-            color: var(--text-muted);
-            letter-spacing: .1em;
-            text-transform: uppercase;
-        }
-
-        /* ── theme toggle ── */
-        .theme-toggle {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            cursor: pointer;
-            user-select: none;
-            color: var(--text-muted);
-            font-size: 12px;
-            font-weight: 600;
-            letter-spacing: .04em;
-            text-transform: uppercase;
-        }
-
-        .toggle-track {
-            position: relative;
-            width: 36px;
-            height: 20px;
-            background: var(--btn-bg);
-            border: 1px solid var(--btn-border);
-            border-radius: 99px;
-            transition: background .2s, border-color .2s;
-        }
-
-        .toggle-track::after {
-            content: '';
-            position: absolute;
-            top: 2px;
-            left: 2px;
-            width: 14px;
-            height: 14px;
-            background: var(--text-muted);
-            border-radius: 50%;
-            transition: transform .2s, background .2s;
-        }
-
-        [data-theme="dark"] .toggle-track {
-            background: #333333;
-            border-color: #555555;
-        }
-
-        [data-theme="dark"] .toggle-track::after {
-            transform: translateX(16px);
-            background: #ffffff;
-        }
-
-        /* ── layout ── */
-        .dashboard-container {
-            display: flex;
-            gap: 20px;
-            max-width: 1400px;
-            margin: 0 auto;
-            align-items: stretch;
-        }
-
-        .panel-left {
-            flex: 0 0 300px;
-            min-width: 0;
-            background: var(--card-bg);
-            padding: 16px 16px 2px 16px;
-            border-radius: 5px;
-            border: 1px solid var(--border);
-            box-shadow: 0 2px 6px var(--shadow);
-            display: flex;
-            flex-direction: column;
-            align-items: stretch;
-            transition: background .2s, border-color .2s;
-        }
-
-        .panel-left h2 {
-            margin-top: 0;
-            font-size: 1rem;
-            margin-bottom: 12px;
-            color: var(--text-main);
-            font-weight: 700;
-            letter-spacing: .03em;
-            text-transform: uppercase;
-        }
-
-        /* ── accordion ── */
-        .servo-details {
-            background: var(--input-bg);
-            border: 1px solid var(--border);
-            border-radius: 2px;
-            margin-bottom: 8px;
-            overflow: hidden;
-            transition: border-color .2s;
-        }
-
-        .servo-summary {
-            padding: 10px 14px;
-            font-weight: 600;
-            font-size: 13px;
-            cursor: pointer;
-            background: var(--btn-bg);
-            color: var(--text-main);
-            user-select: none;
-            display: flex;
-            align-items: center;
-            border-bottom: 1px solid transparent;
-            transition: background 0.15s;
-        }
-
-        .servo-summary:hover {
-            background: var(--btn-hover-bg);
-        }
-
-        .servo-details[open] .servo-summary {
-            border-bottom-color: var(--border);
-            background: var(--btn-hover-bg);
-        }
-
-        .servo-body {
-            padding: 14px;
-            display: flex;
-            flex-direction: column;
-            gap: 12px;
-            background: var(--card-bg);
-        }
-
-        .toggle-row {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            font-size: 12px;
-            font-weight: 500;
-            color: var(--text-muted);
-            cursor: pointer;
-            user-select: none;
-        }
-
-        .toggle-row input {
-            cursor: pointer;
-            width: 15px;
-            height: 15px;
-            accent-color: var(--text-main);
-            margin: 0;
-        }
-
-        /* ── form controls ── */
-        input[type="number"] {
-            width: 100%;
-            min-width: 0;
-            padding: 6px 8px;
-            border: 1px solid var(--input-border);
-            border-radius: 2px;
-            font-size: 13px;
-            font-family: inherit;
-            background: var(--input-bg);
-            color: var(--text-main);
-            -moz-appearance: textfield;
-            transition: border-color .15s, background .2s, color .2s;
-        }
-
-        input[type="number"]::-webkit-outer-spin-button,
-        input[type="number"]::-webkit-inner-spin-button {
-            -webkit-appearance: none;
-        }
-
-        input[type="number"]:focus {
-            outline: none;
-            border-color: var(--text-muted);
-        }
-
-        input[type="number"].invalid {
-            border-color: #cc0000;
-            background: var(--invalid-bg);
-        }
-
-        button {
-            padding: 6px 12px;
-            cursor: pointer;
-            border: 1px solid var(--btn-border);
-            border-radius: 2px;
-            font-weight: 600;
-            font-size: 13px;
-            font-family: inherit;
-            transition: all .15s;
-            white-space: nowrap;
-            flex-shrink: 0;
-        }
-
-        .btn-set {
-            background: var(--btn-bg);
-            color: var(--btn-color);
-            border-color: var(--btn-border);
-        }
-
-        .btn-set:hover {
-            background: var(--btn-hover-bg);
-            border-color: var(--btn-hover-border);
-        }
-
-        .section-divider {
-            border: none;
-            border-top: 1px solid var(--border);
-            margin: 16px 0 12px;
-        }
-
-        /* ── servo groups ── */
-        .servo-group {
-            display: flex;
-            align-items: center;
-            padding: 7px 0;
-            gap: 6px;
-            min-width: 0;
-        }
-
-        .servo-group:last-child {
-            border-bottom: none;
-        }
-
-        .servo-name {
-            font-weight: 600;
-            font-size: 13px;
-            width: 68px;
-            flex-shrink: 0;
-            color: var(--text-main);
-        }
-
-        .servo-controls {
-            display: flex;
-            gap: 5px;
-            align-items: center;
-            justify-content: flex-end;
-            flex: 1;
-            min-width: 0;
-        }
-
-        .servo-controls input[type="number"] {
-            width: 70px;
-            flex-shrink: 0;
-        }
-
-        /* ── right panel ── */
-        .panel-right {
-            flex: 1;
-            min-width: 0;
-        }
-
-        .grid-2x2 {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 8px;
-        }
-
-        .stream-box {
-            background: #000;
-            border-radius: 2px;
-            overflow: hidden;
-            position: relative;
-            aspect-ratio: 4 / 3;
-            box-shadow: 0 2px 6px var(--shadow);
-        }
-
-        .stream-header {
-            background: rgba(0, 0, 0, .7);
-            color: #fff;
-            padding: 6px 10px;
-            font-size: 12px;
-            position: absolute;
-            top: 0;
-            left: 0;
-            right: 0;
-            z-index: 10;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            gap: 6px;
-        }
-
-        .stream-box img {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
-            display: block;
-            background-color: #111;
-        }
-
-        .stream-btn {
-            background: rgba(255, 255, 255, .2);
-            padding: 3px 8px;
-            font-size: 11px;
-            border-radius: 5px;
-            color: #fff;
-            font-weight: 500;
-            border: none;
-            cursor: pointer;
-            white-space: nowrap;
-            transition: background .15s;
-        }
-
-        .stream-btn:hover {
-            background: rgba(255, 255, 255, .35);
-        }
-
-        .stream-btn.closed {
-            background: rgba(200, 30, 30, .55);
-        }
-
-        .stream-btn.closed:hover {
-            background: rgba(200, 30, 30, .75);
-        }
-
-        .cam-offline-overlay {
-            display: none;
-            position: absolute;
-            inset: 0;
-            background: #111;
-            align-items: center;
-            justify-content: center;
-            color: #666;
-            font-size: 1.6rem;
-            font-weight: 600;
-            letter-spacing: .03em;
-            text-align: center;
-        }
-
-        .cam-offline-overlay.visible {
-            display: flex;
-        }
-
-        .empty-slot {
-            aspect-ratio: 4 / 3;
-        }
-
-        @media (max-width: 900px) {
-            .dashboard-container {
-                flex-direction: column;
-            }
-
-            .panel-left {
-                flex: none;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
 
 <body x-data="otpPanel()" x-init="init()" :data-theme="dark ? 'dark' : 'light'">
 
-    <!-- ── top bar ── -->
     <div class="topbar">
         <span class="topbar-title">OTP Control Panel</span>
         <label class="theme-toggle" title="Toggle dark mode" @click="dark = !dark">
@@ -435,38 +21,72 @@
 
     <div class="dashboard-container">
 
-        <!-- ── left panel ── -->
         <div class="panel-left">
             <h2>Servo Controls</h2>
 
-            <!-- Servo accordion — rendered by Alpine loop -->
-            <template x-if="configLoaded">
+            <template x-if="configLoaded === true">
                 <div>
-                    <template x-for="token in TOKENS" :key="token.id">
-                        <details class="servo-details" name="servo-accordion"
-                            @toggle="onAccordionToggle($event, token.id)">
-                            <summary class="servo-summary" x-text="token.name"></summary>
+                    <template x-for="token in tokens" :key="token.id">
+                        <details class="servo-details" name="servo-accordion" @toggle="onAccordionToggle($event)">
+
+                            <summary class="servo-summary" x-text="servoLabel(token)"></summary>
+
                             <div class="servo-body">
-                                <div class="servo-group" style="padding:0; border-bottom:none;">
-                                    <div class="servo-name">Angle (°)</div>
+
+                                <div class="servo-field" x-data="{ dirty: false }">
+                                    <div class="field-label">
+                                        Angle (°)
+                                        <span class="unsaved" x-show="dirty" style="display: none;">*</span>
+                                    </div>
                                     <div class="servo-controls">
                                         <input type="number" :value="angles[token.id]" min="1" max="180"
-                                            @input="validateAngle($event)" @change="onAngleChange($event, token.id)">
-                                        <button class="btn-set"
-                                            @click="testServo(token.id, $el.closest('.servo-body').querySelector('input').value)">Test</button>
+                                            @input="dirty = Number($el.value) !== angles[token.id]; onAngleInput($event)"
+                                            @blur="if(saveAngleOnBlur($event, token.id)) dirty = false">
+                                        <button class="btn-set" @click="testServo($el, token.id)">TRY</button>
                                     </div>
                                 </div>
+
+                                <div class="servo-field" x-data="{ dirty: false }">
+                                    <div class="field-label">
+                                        Name
+                                        <span class="unsaved" x-show="dirty" style="display: none;">*</span>
+                                    </div>
+                                    <div class="servo-controls">
+                                        <input type="text" class="meta-input name-input" :value="token.displayName"
+                                            @input="dirty = $el.value.trim() !== (token.displayName || ''); onNameInput($event)">
+                                        <button class="btn-set"
+                                            @click="if(saveName($el, token)) dirty = false">Set</button>
+                                    </div>
+                                </div>
+
+                                <div class="servo-field" x-data="{ dirty: false }">
+                                    <div class="field-label">
+                                        Aliases
+                                        <span class="unsaved" x-show="dirty" style="display: none;">*</span>
+                                    </div>
+                                    <div class="servo-controls">
+                                        <input type="text" class="meta-input alias-input"
+                                            placeholder="e.g. woori, wr, wuri" :value="token.aliasString"
+                                            @input="dirty = $el.value.trim() !== (token.aliasString || ''); onAliasInput($event)">
+                                        <button class="btn-set"
+                                            @click="if(saveAliases($el, token)) dirty = false">Set</button>
+                                    </div>
+                                </div>
+
                                 <label class="toggle-row">
                                     <input type="checkbox" :checked="reTriggers[token.id]"
                                         @change="onReTriggerChange($event, token.id)">
                                     Re-trigger after capture
                                 </label>
+
                             </div>
                         </details>
                     </template>
                 </div>
             </template>
-            <div x-show="!configLoaded" style="font-size:13px; color:var(--text-muted);">Loading...</div>
+            <div x-show="configLoaded !== true" style="font-size:13px; color:var(--text-muted);">
+                <span x-text="configLoaded === 'error' ? 'Failed to load config.' : 'Loading...'"></span>
+            </div>
 
             <hr class="section-divider">
             <h2 style="margin-top:0">Camera Config</h2>
@@ -475,11 +95,8 @@
                 <div class="servo-group">
                     <div class="servo-name" x-text="side.charAt(0).toUpperCase() + side.slice(1) + ' (ID)'"></div>
                     <div class="servo-controls">
-                        <div class="input-col">
-                            <input type="number" :value="cameras[side]" min="0" max="3" @input="validateCamId($event)"
-                                @change="onCamIdChange($event, side)">
-                        </div>
-                        <button class="btn-set" @click="saveCamera(side)">Set</button>
+                        <input type="number" :value="cameras[side]" min="0" max="3" @input="onCamIdInput($event)">
+                        <button class="btn-set" @click="saveCamera($el, side)">Set</button>
                     </div>
                 </div>
             </template>
@@ -487,11 +104,8 @@
             <div class="servo-group">
                 <div class="servo-name">Delay (ms)</div>
                 <div class="servo-controls">
-                    <div class="input-col">
-                        <input type="number" :value="captureDelay" min="1000" max="5000" @input="validateDelay($event)"
-                            @change="captureDelay = Number($event.target.value)">
-                    </div>
-                    <button class="btn-set" @click="saveCaptureDelay()">Set</button>
+                    <input type="number" :value="captureDelay" min="1000" max="5000" @input="onDelayInput($event)">
+                    <button class="btn-set" @click="saveCaptureDelay($el)">Set</button>
                 </div>
             </div>
 
@@ -500,11 +114,9 @@
             </p>
         </div>
 
-        <!-- ── right panel ── -->
         <div class="panel-right">
             <div class="grid-2x2">
 
-                <!-- Left camera -->
                 <div class="stream-box">
                     <div class="stream-header">
                         <span x-text="camLabel('left')"></span>
@@ -516,7 +128,6 @@
                     <div class="cam-offline-overlay" :class="{ visible: !camOpen.left }">Camera offline</div>
                 </div>
 
-                <!-- Right camera -->
                 <div class="stream-box">
                     <div class="stream-header">
                         <span x-text="camLabel('right')"></span>
@@ -528,7 +139,6 @@
                     <div class="cam-offline-overlay" :class="{ visible: !camOpen.right }">Camera offline</div>
                 </div>
 
-                <!-- Latest capture -->
                 <div class="stream-box">
                     <div class="stream-header">
                         <span>Latest Capture</span>
@@ -545,194 +155,7 @@
         </div>
 
     </div>
-
-    <script>
-        function otpPanel() {
-            return {
-                // ── constants ──────────────────────────────────────────────
-                TOKENS: [
-                    { id: 1, name: 'Shinhan' },
-                    { id: 2, name: 'KFCC' },
-                    { id: 3, name: 'Kakao' },
-                    { id: 4, name: 'Woori' },
-                    { id: 5, name: 'NH' },
-                ],
-                SIDES: ['left', 'right'],
-
-                // ── state ──────────────────────────────────────────────────
-                dark: false,
-                configLoaded: false,
-                angles: {},
-                reTriggers: {},
-                cameras: { left: 0, right: 1 },
-                captureDelay: 1000,
-                camOpen: { left: true, right: true },
-                camSrc: { left: '', right: '' },
-                latestSrc: '/captures/latest.jpg',
-                captureMissing: false,
-                capturePolling: true,
-
-                // ── init ───────────────────────────────────────────────────
-                init() {
-                    // Theme: respect saved preference or OS setting
-                    const saved = localStorage.getItem('theme');
-                    this.dark = saved
-                        ? saved === 'dark'
-                        : window.matchMedia('(prefers-color-scheme: dark)').matches;
-
-                    // Persist theme changes
-                    this.$watch('dark', val =>
-                        localStorage.setItem('theme', val ? 'dark' : 'light')
-                    );
-
-                    this.loadConfig();
-
-                    // Poll latest capture every second
-                    setInterval(() => {
-                        if (this.capturePolling)
-                            this.latestSrc = `/captures/latest.jpg?t=${Date.now()}`;
-                    }, 1000);
-                },
-
-                // ── network helpers ────────────────────────────────────────
-                post(url, body) {
-                    return fetch(url, {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify(body),
-                    });
-                },
-
-                bustUrl(path) {
-                    return `${path}?t=${Date.now()}`;
-                },
-
-                // ── validation ─────────────────────────────────────────────
-                isAngleValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 1 && n <= 180; },
-                isIdValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 0 && n <= 3; },
-                isDelayValid(v) { const n = Number(v); return Number.isInteger(n) && n >= 1000 && n <= 5000; },
-                clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v || lo)); },
-
-                validateAngle(e) {
-                    e.target.classList.toggle('invalid', !this.isAngleValid(e.target.value));
-                },
-                validateCamId(e) {
-                    e.target.classList.toggle('invalid', !this.isIdValid(e.target.value));
-                },
-                validateDelay(e) {
-                    e.target.classList.toggle('invalid', !this.isDelayValid(e.target.value));
-                },
-
-                // ── config load ────────────────────────────────────────────
-                async loadConfig() {
-                    let data;
-                    try {
-                        data = await fetch('/get_config').then(r => r.json());
-                    } catch {
-                        this.configLoaded = 'error';
-                        return;
-                    }
-
-                    this.angles = { ...data.angles };
-                    this.reTriggers = { ...(data.re_trigger || {}) };
-                    this.captureDelay = data.capture_delay_ms ?? 1000;
-                    this.cameras = { ...data.cameras };
-                    this.configLoaded = true;
-
-                    this.SIDES.forEach(side => this.openCamera(side, this.cameras[side]));
-                },
-
-                // ── camera helpers ─────────────────────────────────────────
-                camLabel(side) {
-                    const label = side.charAt(0).toUpperCase() + side.slice(1);
-                    return `Camera ${label} (ID: ${this.cameras[side] ?? '-'})`;
-                },
-
-                openCamera(side, camId) {
-                    this.camSrc[side] = this.bustUrl(`/video_feed/${camId}`);
-                    this.camOpen[side] = true;
-                },
-
-                setCamClosed(side) {
-                    this.camSrc[side] = '';
-                    this.camOpen[side] = false;
-                },
-
-                async toggleCamera(side) {
-                    if (this.camOpen[side]) {
-                        this.setCamClosed(side);
-                        const other = side === 'left' ? 'right' : 'left';
-                        const otherSameId = this.camOpen[other] && this.cameras[other] === this.cameras[side];
-                        if (!otherSameId)
-                            await this.post('/release_camera', { cam_id: this.cameras[side] });
-                    } else {
-                        const res = await this.post('/set_camera', { side, cam_id: this.cameras[side] });
-                        if (res.ok) this.openCamera(side, this.cameras[side]);
-                    }
-                },
-
-                async saveCamera(side) {
-                    if (!this.isIdValid(this.cameras[side])) {
-                        alert('Camera ID must be between 0 and 3');
-                        this.cameras[side] = this.clamp(Number(this.cameras[side]), 0, 3);
-                        return;
-                    }
-                    const res = await this.post('/set_camera', { side, cam_id: Number(this.cameras[side]) });
-                    if (res.ok) this.openCamera(side, this.cameras[side]);
-                },
-
-                onCamIdChange(e, side) {
-                    if (!this.isIdValid(e.target.value))
-                        e.target.value = this.clamp(Number(e.target.value), 0, 3);
-                    e.target.classList.remove('invalid');
-                    this.cameras[side] = Number(e.target.value);
-                },
-
-                // ── servo helpers ──────────────────────────────────────────
-                onAccordionToggle(e, id) {
-                    if (e.target.open) {
-                        document.querySelectorAll('.servo-details').forEach(el => {
-                            if (el !== e.target && el.open) el.open = false;
-                        });
-                    }
-                },
-
-                onAngleChange(e, id) {
-                    if (!this.isAngleValid(e.target.value))
-                        e.target.value = this.clamp(Number(e.target.value), 1, 180);
-                    e.target.classList.remove('invalid');
-                    const v = Number(e.target.value);
-                    this.angles[id] = v;
-                    this.post('/set_angle', { servo: id, angle: v });
-                },
-
-                testServo(id, angleVal) {
-                    if (this.isAngleValid(angleVal))
-                        fetch(`/fire_servo?servo=${id}&angle=${angleVal}&reset_angle=0`);
-                },
-
-                onReTriggerChange(e, id) {
-                    this.reTriggers[id] = e.target.checked;
-                    this.post('/set_re_trigger', { servo: id, re_trigger: e.target.checked });
-                },
-
-                // ── capture helpers ────────────────────────────────────────
-                saveCaptureDelay() {
-                    if (!this.isDelayValid(this.captureDelay)) {
-                        alert('Delay must be between 1000ms and 5000ms (1–5s)');
-                        this.captureDelay = this.clamp(Number(this.captureDelay), 1000, 5000);
-                        return;
-                    }
-                    this.post('/set_capture_delay', { delay_ms: this.captureDelay });
-                },
-
-                reloadCapture() {
-                    this.capturePolling = true;
-                    this.latestSrc = this.bustUrl('/captures/latest.jpg');
-                },
-            };
-        }
-    </script>
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 </body>
 
 </html>

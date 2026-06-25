@@ -1,0 +1,467 @@
+html,
+body {
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+}
+
+/* ── theme tokens ── */
+:root {
+    --bg: #f5f5f5;
+    --card-bg: #ffffff;
+    --border: #e0e0e0;
+    --input-bg: #ffffff;
+    --input-border: #cccccc;
+    --primary: #000000;
+    --text-main: #111111;
+    --text-muted: #777777;
+    --btn-bg: #eeeeee;
+    --btn-color: #222222;
+    --btn-border: #cccccc;
+    --btn-hover-bg: #e0e0e0;
+    --btn-hover-border: #aaaaaa;
+    --shadow: rgba(0, 0, 0, .07);
+    --invalid-bg: #fff5f5;
+}
+
+[data-theme="dark"] {
+    --bg: #0a0a0a;
+    --card-bg: #141414;
+    --border: #2a2a2a;
+    --input-bg: #1c1c1c;
+    --input-border: #333333;
+    --primary: #ffffff;
+    --text-main: #f0f0f0;
+    --text-muted: #888888;
+    --btn-bg: #222222;
+    --btn-color: #dddddd;
+    --btn-border: #333333;
+    --btn-hover-bg: #2e2e2e;
+    --btn-hover-border: #555555;
+    --shadow: rgba(0, 0, 0, .4);
+    --invalid-bg: #1e0e0e;
+}
+
+/* ── base ── */
+*,
+*::before,
+*::after {
+    box-sizing: border-box;
+}
+
+body {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    margin: 0;
+    padding: 20px;
+    background: var(--bg);
+    color: var(--text-main);
+    transition: background .2s, color .2s;
+}
+
+/* ── top bar ── */
+.topbar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    max-width: 1400px;
+    margin: 0 auto 16px;
+}
+
+.topbar-title {
+    font-size: .85rem;
+    font-weight: 700;
+    color: var(--text-muted);
+    letter-spacing: .1em;
+    text-transform: uppercase;
+}
+
+/* ── theme toggle ── */
+.theme-toggle {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    cursor: pointer;
+    user-select: none;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+}
+
+.toggle-track {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    background: var(--btn-bg);
+    border: 1px solid var(--btn-border);
+    border-radius: 99px;
+    transition: background .2s, border-color .2s;
+}
+
+.toggle-track::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 14px;
+    height: 14px;
+    background: var(--text-muted);
+    border-radius: 50%;
+    transition: transform .2s, background .2s;
+}
+
+[data-theme="dark"] .toggle-track {
+    background: #333333;
+    border-color: #555555;
+}
+
+[data-theme="dark"] .toggle-track::after {
+    transform: translateX(16px);
+    background: #ffffff;
+}
+
+/* ── layout ── */
+.dashboard-container {
+    display: flex;
+    gap: 20px;
+    max-width: 1400px;
+    margin: 0 auto;
+    align-items: stretch;
+}
+
+.panel-left {
+    flex: 0 0 300px;
+    min-width: 0;
+    background: var(--card-bg);
+    padding: 16px 16px 2px 16px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    box-shadow: 0 2px 6px var(--shadow);
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    transition: background .2s, border-color .2s;
+}
+
+.panel-left h2 {
+    margin-top: 0;
+    font-size: 1rem;
+    margin-bottom: 12px;
+    color: var(--text-main);
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+/* ── accordion ── */
+.servo-details {
+    background: var(--input-bg);
+    border: 1px solid var(--border);
+    border-radius: 2px;
+    margin-bottom: 8px;
+    overflow: hidden;
+    transition: border-color .2s;
+}
+
+.servo-summary {
+    padding: 10px 14px;
+    font-weight: 600;
+    font-size: 13px;
+    cursor: pointer;
+    background: var(--btn-bg);
+    color: var(--text-main);
+    user-select: none;
+    display: flex;
+    align-items: center;
+    border-bottom: 1px solid transparent;
+    transition: background 0.15s;
+}
+
+.servo-summary:hover {
+    background: var(--btn-hover-bg);
+}
+
+.servo-details[open] .servo-summary {
+    border-bottom-color: var(--border);
+    background: var(--btn-hover-bg);
+}
+
+.servo-body {
+    padding: 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px; /* Tighter layout for interior elements */
+    background: var(--card-bg);
+}
+
+.toggle-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+    margin-top: 4px;
+}
+
+.toggle-row input {
+    cursor: pointer;
+    width: 15px;
+    height: 15px;
+    accent-color: var(--text-main);
+    margin: 0;
+}
+
+/* ── label-on-top fields (Angle / Name / Aliases) ── */
+.servo-field {
+    display: flex;
+    flex-direction: column;
+    gap: 2px; /* Pulls the label and input box closely together */
+}
+
+.field-label {
+    font-weight: 600;
+    font-size: 10px; /* Reduced to avoid looking too bulky */
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: .05em;
+    display: flex;
+    align-items: center;
+}
+
+/* Unsaved state indicator */
+.unsaved {
+    color: #d97706; /* Amber warning color */
+    font-size: 14px;
+    margin-left: 3px;
+    line-height: 1;
+    transform: translateY(1px); 
+    user-select: none;
+}
+
+[data-theme="dark"] .unsaved {
+    color: #fbbf24;
+}
+
+/* Inside the servo submenu, let the input fill the row (Test sits beside it
+   at its own width) instead of the fixed 70px used by Camera Config's
+   inline label-left rows. */
+.servo-field .servo-controls input[type="number"] {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+    flex-shrink: 1;
+}
+
+/* ── form controls ── */
+input[type="number"],
+input[type="text"].meta-input {
+    width: 100%;
+    min-width: 0;
+    padding: 6px 8px;
+    border: 1px solid var(--input-border);
+    border-radius: 2px;
+    font-size: 13px;
+    font-family: inherit;
+    background: var(--input-bg);
+    color: var(--text-main);
+    transition: border-color .15s, background .2s, color .2s;
+}
+
+input[type="number"] {
+    -moz-appearance: textfield;
+}
+
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+}
+
+input[type="number"]:focus,
+input[type="text"].meta-input:focus {
+    outline: none;
+    border-color: var(--text-muted);
+}
+
+input[type="number"].invalid,
+input[type="text"].meta-input.invalid {
+    border-color: #cc0000;
+    background: var(--invalid-bg);
+}
+
+button {
+    padding: 6px 12px;
+    cursor: pointer;
+    border: 1px solid var(--btn-border);
+    border-radius: 2px;
+    font-weight: 600;
+    font-size: 13px;
+    font-family: inherit;
+    transition: all .15s;
+    white-space: nowrap;
+    flex-shrink: 0;
+}
+
+.btn-set {
+    background: var(--btn-bg);
+    color: var(--btn-color);
+    border-color: var(--btn-border);
+}
+
+.btn-set:hover {
+    background: var(--btn-hover-bg);
+    border-color: var(--btn-hover-border);
+}
+
+.section-divider {
+    border: none;
+    border-top: 1px solid var(--border);
+    margin: 16px 0 12px;
+}
+
+/* ── servo groups ── */
+.servo-group {
+    display: flex;
+    align-items: center;
+    padding: 7px 0;
+    gap: 6px;
+    min-width: 0;
+}
+
+.servo-group:last-child {
+    border-bottom: none;
+}
+
+.servo-name {
+    font-weight: 600;
+    font-size: 13px;
+    width: 68px;
+    flex-shrink: 0;
+    color: var(--text-main);
+}
+
+.servo-controls {
+    display: flex;
+    gap: 5px;
+    align-items: center;
+    justify-content: flex-end;
+    flex: 1;
+    min-width: 0;
+}
+
+.servo-controls input[type="number"] {
+    width: 70px;
+    flex-shrink: 0;
+}
+
+.servo-controls input[type="text"].meta-input {
+    width: auto;
+    flex: 1;
+    min-width: 0;
+}
+
+/* ── right panel ── */
+.panel-right {
+    flex: 1;
+    min-width: 0;
+}
+
+.grid-2x2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+.stream-box {
+    background: #000;
+    border-radius: 2px;
+    overflow: hidden;
+    position: relative;
+    aspect-ratio: 4 / 3;
+    box-shadow: 0 2px 6px var(--shadow);
+}
+
+.stream-header {
+    background: rgba(0, 0, 0, .7);
+    color: #fff;
+    padding: 6px 10px;
+    font-size: 12px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 10;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+
+.stream-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+    background-color: #111;
+}
+
+.stream-btn {
+    background: rgba(255, 255, 255, .2);
+    padding: 3px 8px;
+    font-size: 11px;
+    border-radius: 5px;
+    color: #fff;
+    font-weight: 500;
+    border: none;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background .15s;
+}
+
+.stream-btn:hover {
+    background: rgba(255, 255, 255, .35);
+}
+
+.stream-btn.closed {
+    background: rgba(200, 30, 30, .55);
+}
+
+.stream-btn.closed:hover {
+    background: rgba(200, 30, 30, .75);
+}
+
+.cam-offline-overlay {
+    display: none;
+    position: absolute;
+    inset: 0;
+    background: #111;
+    align-items: center;
+    justify-content: center;
+    color: #666;
+    font-size: 1.6rem;
+    font-weight: 600;
+    letter-spacing: .03em;
+    text-align: center;
+}
+
+.cam-offline-overlay.visible {
+    display: flex;
+}
+
+.empty-slot {
+    aspect-ratio: 4 / 3;
+}
+
+@media (max-width: 900px) {
+    .dashboard-container {
+        flex-direction: column;
+    }
+
+    .panel-left {
+        flex: none;
+    }
+}

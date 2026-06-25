@@ -9,7 +9,8 @@ WebServer server(80);
 Servo servos[5];
 
 // DONT REMOVE FOR FUTURE USE {4, 13, 16, 17, 18, 19, 21, 22, 25, 26}
-const int servoPins[5] = {4, 13, 14, 25, 26};
+const int servoPins[] = {4, 13, 14, 25, 26};
+const int servoCount = sizeof(servoPins) / sizeof(servoPins[0]);
 
 void handleActivate() {
   if (!server.hasArg("servo") || !server.hasArg("angle")) {
@@ -22,8 +23,8 @@ void handleActivate() {
   int resetAngle =
       server.hasArg("reset_angle") ? server.arg("reset_angle").toInt() : 0;
 
-  if (servoNum < 1 || servoNum > 5) {
-    server.send(400, "text/plain", "Servo must be 1–5");
+  if (servoNum < 1 || servoNum > servoCount) {
+    server.send(400, "text/plain", "Servo out of range");
     return;
   }
 
@@ -38,10 +39,16 @@ void handleActivate() {
   server.send(200, "text/plain", "OK");
 }
 
+void handleServoCount() {
+  String json = "{\"count\":" + String(servoCount) + "}";
+  server.sendHeader("Access-Control-Allow-Origin", "*");
+  server.send(200, "application/json", json);
+}
+
 void setup() {
   Serial.begin(115200);
 
-  for (int i = 0; i < 5; i++) {
+  for (int i = 0; i < servoCount; i++) {
     servos[i].attach(servoPins[i]);
     servos[i].write(0);
   }
@@ -53,6 +60,7 @@ void setup() {
   Serial.println(WiFi.localIP());
 
   server.on("/activate", HTTP_GET, handleActivate);
+  server.on("/servo_count", HTTP_GET, handleServoCount);
   server.begin();
 }
 
