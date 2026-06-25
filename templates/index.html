@@ -27,14 +27,18 @@
             <template x-if="configLoaded === true">
                 <div>
                     <template x-for="token in tokens" :key="token.id">
-                        <details class="servo-details" name="servo-accordion" @toggle="onAccordionToggle($event)" x-data="{ dirtyName: false, dirtyAliases: false }">
+                        <details class="servo-details" name="servo-accordion" @toggle="onAccordionToggle($event)"
+                            x-data="{ dirtyName: false, dirtyAliases: false }">
 
                             <summary class="servo-summary">
                                 <div style="display: flex; align-items: center;">
                                     <span x-text="servoLabel(token)"></span>
-                                    <span class="unsaved" x-show="dirtyName || dirtyAliases" style="display: none; margin-left: 8px;">*</span>
+                                    <span class="unsaved" x-show="dirtyName || dirtyAliases"
+                                        style="display: none; margin-left: 8px;">*</span>
                                 </div>
-                                <svg class="chevron accordion-chevron" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                                <svg class="chevron accordion-chevron" viewBox="0 0 24 24" width="16" height="16"
+                                    stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"
+                                    stroke-linejoin="round">
                                     <polyline points="6 9 12 15 18 9"></polyline>
                                 </svg>
                             </summary>
@@ -45,8 +49,7 @@
                                     <div class="field-label">Angle (°)</div>
                                     <div class="servo-controls">
                                         <input type="number" :value="angles[token.id]" min="1" max="180"
-                                            @input="onAngleInput($event)"
-                                            @blur="saveAngleOnBlur($event, token.id)">
+                                            @input="onAngleInput($event)" @blur="saveAngleOnBlur($event, token.id)">
                                         <button class="btn-set" @click="testServo($el, token.id)">TRY</button>
                                     </div>
                                 </div>
@@ -92,10 +95,13 @@
 
             <template x-for="side in SIDES" :key="side">
                 <div class="servo-field cam-field" x-data="{ dirty: false }">
-                    <div class="field-label" x-text="(side.charAt(0).toUpperCase() + side.slice(1)) + ' Camera (ID)'"></div>
+                    <div class="field-label" x-text="(side.charAt(0).toUpperCase() + side.slice(1)) + ' Camera (ID)'">
+                    </div>
                     <div class="servo-controls">
-                        <input type="number" :value="cameras[side]" min="0" max="3" @input="dirty = Number($el.value) !== cameras[side]; onCamIdInput($event)">
-                        <button class="btn-set" :class="{'btn-dirty': dirty}" @click="saveCamera($el, side); dirty = false">Set</button>
+                        <input type="number" :value="cameras[side]" min="0" max="3"
+                            @input="dirty = Number($el.value) !== cameras[side]; onCamIdInput($event)">
+                        <button class="btn-set" :class="{'btn-dirty': dirty}"
+                            @click="saveCamera($el, side); dirty = false">Set</button>
                     </div>
                 </div>
             </template>
@@ -103,20 +109,25 @@
             <div class="servo-field cam-field" x-data="{ dirty: false }">
                 <div class="field-label">Capture Delay (ms)</div>
                 <div class="servo-controls">
-                    <input type="number" :value="captureDelay" min="1000" max="5000" @input="dirty = Number($el.value) !== captureDelay; onDelayInput($event)">
-                    <button class="btn-set" :class="{'btn-dirty': dirty}" @click="saveCaptureDelay($el); dirty = false">Set</button>
+                    <input type="number" :value="captureDelay" min="1000" max="5000"
+                        @input="dirty = Number($el.value) !== captureDelay; onDelayInput($event)">
+                    <button class="btn-set" :class="{'btn-dirty': dirty}"
+                        @click="saveCaptureDelay($el); dirty = false">Set</button>
                 </div>
             </div>
 
             <hr class="section-divider">
-            
+
             <div class="servo-details prompt-menu-container" style="margin-bottom: 0;" :class="{'is-open': promptOpen}">
                 <div class="servo-summary" @click="togglePromptEditor()">
                     <div style="display: flex; align-items: center;">
                         PROMPT MENU
-                        <span class="unsaved" x-show="promptText !== savedPromptText" style="display: none; margin-left: 8px;">*</span>
+                        <span class="unsaved" x-show="(promptText !== savedPromptText) || modelsConfigDirty"
+                            style="display: none; margin-left: 8px;">*</span>
                     </div>
-                    <svg class="chevron" :class="{'open': promptOpen}" viewBox="0 0 24 24" width="16" height="16" stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+                    <svg class="chevron" :class="{'open': promptOpen}" viewBox="0 0 24 24" width="16" height="16"
+                        stroke="currentColor" stroke-width="2" fill="none" stroke-linecap="round"
+                        stroke-linejoin="round">
                         <polyline points="6 9 12 15 18 9"></polyline>
                     </svg>
                 </div>
@@ -170,33 +181,87 @@
             <div class="prompt-editor-pane" x-show="promptOpen">
                 <div class="prompt-editor-header">
                     <div class="prompt-tab-row">
-                        <button class="prompt-tab" :class="{ active: !promptPreviewMode }"
-                            @click="promptPreviewMode = false">Edit</button>
-                        <button class="prompt-tab" :class="{ active: promptPreviewMode }"
-                            @click="promptPreviewMode = true">Preview</button>
-                        <span class="prompt-hint">
-                            PLACEHOLDERS: <code title="Use this to indicate the name of the servo">{servo1}</code>-<code x-text="'{servo' + tokens.length + '}'" title="Use this to indicate the name of the servo"></code>, <code title="The keyword that the user asks for">{target_key}</code>.
+                        <button class="prompt-tab" :class="{ active: !promptPreviewMode && !promptConfigMode }"
+                            @click="promptPreviewMode = false; promptConfigMode = false;">Edit</button>
+                        <button class="prompt-tab" :class="{ active: promptPreviewMode && !promptConfigMode }"
+                            @click="promptPreviewMode = true; promptConfigMode = false;">Preview</button>
+                        <button class="prompt-tab" :class="{ active: promptConfigMode }"
+                            @click="promptConfigMode = true; promptPreviewMode = false;">
+                            Config <span class="unsaved" x-show="modelsConfigDirty"
+                                style="display: none; font-size: 11px;">*</span>
+                        </button>
+                        <span class="prompt-hint" x-show="!promptConfigMode">
+                            PLACEHOLDERS: <code title="Use this to indicate the name of the servo">{servo1}</code>-<code
+                                x-text="'{servo' + tokens.length + '}'"
+                                title="Use this to indicate the name of the servo"></code>, <code
+                                title="The keyword that the user asks for">{target_key}</code>.
                         </span>
                     </div>
-                    <div class="prompt-action-row">
+                    <div class="prompt-action-row" x-show="!promptConfigMode">
                         <button class="btn-set prompt-action-btn" @click="resetPrompt()">Reset</button>
                         <button class="btn-set prompt-action-btn prompt-set-btn"
-                            :class="{ 'btn-dirty': promptText !== savedPromptText }"
-                            @click="savePrompt()">Set</button>
+                            :class="{ 'btn-dirty': promptText !== savedPromptText }" @click="savePrompt()">Set</button>
+                    </div>
+                    <div class="prompt-action-row" x-show="promptConfigMode">
+                        <button class="btn-set prompt-action-btn" @click="resetModelsConfig()">Reset</button>
+                        <button class="btn-set prompt-action-btn prompt-set-btn"
+                            :class="{ 'btn-dirty': modelsConfigDirty }" @click="saveModelsConfig()">Set Config</button>
                     </div>
                 </div>
-
-                <div class="prompt-editor-body" x-show="!promptPreviewMode">
+                <div class="prompt-editor-body" x-show="!promptPreviewMode && !promptConfigMode">
                     <div class="prompt-textarea-backdrop" x-html="promptBackdropHTML()" x-ref="backdrop"></div>
-                    <textarea class="prompt-textarea" 
-                        x-model="promptText"
+                    <textarea class="prompt-textarea" x-model="promptText"
                         @scroll="$refs.backdrop.scrollTop = $el.scrollTop; $refs.backdrop.scrollLeft = $el.scrollLeft"
-                        spellcheck="false"
-                        placeholder="Enter Gemini prompt template…"></textarea>
+                        spellcheck="false" placeholder="Enter Gemini prompt template…"></textarea>
                 </div>
 
-                <pre class="prompt-preview" x-show="promptPreviewMode"
+                <pre class="prompt-preview" x-show="promptPreviewMode && !promptConfigMode"
                     x-html="promptPreviewHTML()"></pre>
+
+                <div class="prompt-config-body" x-show="promptConfigMode">
+                    <h3 class="config-title">Model Fallbacks</h3>
+                    <p class="config-description">
+                        Execution flows top to bottom. If one fails, the next triggers automatically. Check Priority Tier to enable elevated settings.
+                    </p>
+
+                    <div class="config-grid-list">
+                        <template x-for="(item, index) in localModelsConfig" :key="index">
+                            <div class="config-row-minimal">
+                                <div class="config-row-left">
+                                    <select :value="item.model" @change="updateModelValue(index, $event.target.value)"
+                                        class="config-select">
+                                        <option value="gemini-3.1-flash-lite">gemini-3.1-flash-lite</option>
+                                        <option value="gemini-3.5-flash">gemini-3.5-flash</option>
+                                        <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+                                        <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+                                    </select>
+                                </div>
+
+                                <div class="config-row-right">
+                                    <label class="config-checkbox-label">
+                                        <input type="checkbox" :checked="item.priority"
+                                            @change="item.priority = $event.target.checked; checkModelsDirty();"
+                                            class="config-checkbox">
+                                        Priority Tier
+                                    </label>
+
+                                    <div style="display: flex; gap: 4px;">
+                                        <button class="btn-set config-arrow-btn" :disabled="index === 0"
+                                            @click="moveModelUp(index)">▲</button>
+
+                                        <button class="btn-set config-arrow-btn"
+                                            :disabled="index === localModelsConfig.length - 1"
+                                            @click="moveModelDown(index)">▼</button>
+
+                                        <button class="btn-set config-delete-btn" @click="deleteModel(index)">✕</button>
+                                    </div>
+                                </div>
+                            </div>
+                        </template>
+                    </div>
+
+                    <button class="btn-set add-model-btn" @click="addModelRow()">+ Add Fallback Model</button>
+                </div>
             </div>
 
         </div>

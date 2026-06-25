@@ -49,6 +49,10 @@ DEFAULT_CONFIG = {
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
     "prompt_template": "",  # empty = use DEFAULT_PROMPT_TEMPLATE in gemini.py
+    "models_config": [
+        {"model": "gemini-3.1-flash-lite", "priority": True},
+        {"model": "gemini-3.5-flash", "priority": True},
+    ],
 }
 VALID_SIDES = {"left", "right"}
 
@@ -319,6 +323,35 @@ def set_prompt():
     return jsonify({"status": "ok"})
 
 
+@app.route("/set_models_config", methods=["POST"])
+def set_models_config():
+    data = request.get_json()
+    models_config = data.get("models_config")
+    if not isinstance(models_config, list):
+        return (
+            jsonify(
+                {"status": "error", "message": "Invalid models configuration format"}
+            ),
+            400,
+        )
+
+    for item in models_config:
+        if not isinstance(item, dict) or "model" not in item or "priority" not in item:
+            return (
+                jsonify(
+                    {
+                        "status": "error",
+                        "message": "Each model item must contain model and priority",
+                    }
+                ),
+                400,
+            )
+
+    app_config["models_config"] = models_config
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
@@ -495,10 +528,23 @@ async def handle_otp_requests(event):
         if image_path:
             template = app_config.get("prompt_template") or None
             servo_names = {
-                sid: (app_config.get("servo_meta", {}).get(sid, {}).get("name", "").strip() or f"servo{sid}")
+                sid: (
+                    app_config.get("servo_meta", {})
+                    .get(sid, {})
+                    .get("name", "")
+                    .strip()
+                    or f"servo{sid}"
+                )
                 for sid in sorted(VALID_SERVOS, key=int)
             }
-            otp_data = get_extracted_otps(image_path, token["key"], template, servo_names)
+            models_config = app_config.get("models_config", None)
+            otp_data = get_extracted_otps(
+                image_path,
+                token["key"],
+                template,
+                servo_names,
+                models_config=models_config,
+            )
         reply_text = "null"
         if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
             reply_text = str(otp_data[token["key"]]).strip()

@@ -24,6 +24,9 @@ function otpPanel() {
         defaultPromptText: '',
         savedPromptText: '',
         promptPreviewMode: false,
+        promptConfigMode: false,
+        localModelsConfig: [],
+        modelsConfigDirty: false,
 
         // ── init ───────────────────────────────────────────────────
         init() {
@@ -91,6 +94,8 @@ function otpPanel() {
                 return;
             }
 
+            this.config = data;
+
             this.angles = { ...data.angles };
             this.reTriggers = { ...(data.re_trigger || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
@@ -109,6 +114,19 @@ function otpPanel() {
             this.configLoaded = true;
             this.SIDES.forEach(side => this.openCamera(side, this.cameras[side]));
             await this.loadPrompt();
+
+            // Load models arrangement state or instantiate baseline options
+            if (data.models_config) {
+                this.localModelsConfig = JSON.parse(JSON.stringify(data.models_config));
+            } else {
+                this.localModelsConfig = [
+                    { model: 'gemini-3.1-flash-lite', priority: true },
+                    { model: 'gemini-3.5-flash', priority: true }
+                ];
+                this.config.models_config = JSON.parse(JSON.stringify(this.localModelsConfig));
+            }
+            this.checkModelsDirty();
+            this.modelsConfigDirty = false;
         },
 
         servoLabel(token) {
@@ -155,7 +173,7 @@ function otpPanel() {
             const name = input.value.trim();
             token.displayName = name;
             this.post('/set_servo_meta', { servo: token.id, name });
-            input.value = name; 
+            input.value = name;
             return true;
         },
 
@@ -176,7 +194,7 @@ function otpPanel() {
             const aliases = this.parseAliases(input.value);
             token.aliasString = aliases.join(', ');
             this.post('/set_servo_meta', { servo: token.id, aliases });
-            input.value = token.aliasString; 
+            input.value = token.aliasString;
             return true;
         },
 
@@ -282,7 +300,10 @@ function otpPanel() {
 
         togglePromptEditor() {
             this.promptOpen = !this.promptOpen;
-            if (!this.promptOpen) this.promptPreviewMode = false;
+            if (!this.promptOpen) {
+                this.promptPreviewMode = false;
+                this.promptConfigMode = false;
+            }
         },
 
         promptServoNames() {
@@ -300,18 +321,17 @@ function otpPanel() {
             }[tag] || tag));
         },
 
-        // 
         promptBackdropHTML() {
             let out = this.escapeHTML(this.promptText);
             out = out.replace(/\{(servo\d+|target_key)\}/g, match => `<mark class="hl-placeholder-bg">${match}</mark>`);
-            if (out.endsWith('\n')) out += ' '; 
+            if (out.endsWith('\n')) out += ' ';
             return out;
         },
 
         promptPreviewHTML() {
             let out = this.escapeHTML(this.promptText);
             const names = this.promptServoNames();
-            
+
             Object.entries(names).forEach(([id, name]) => {
                 const safeName = this.escapeHTML(name);
                 const placeholder = `{servo${id}}`;
@@ -330,8 +350,75 @@ function otpPanel() {
         },
 
         resetPrompt() {
-            // Only resets locally. Does not auto-post to server.
             this.promptText = this.defaultPromptText;
+        },
+
+        // ── model configuration helpers ────────────────────────────
+        checkModelsDirty() {
+            // Smart validation: compares workspace against actual backend configuration
+            const savedStr = JSON.stringify(this.config?.models_config || [
+                { model: 'gemini-3.1-flash-lite', priority: true },
+                { model: 'gemini-3.5-flash', priority: true }
+            ]);
+            const currentStr = JSON.stringify(this.localModelsConfig);
+            this.modelsConfigDirty = (savedStr !== currentStr);
+        },
+
+        addModelRow() {
+            const currentModels = this.localModelsConfig.map(m => m.model);
+            const standard = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'];
+            const nextAvailable = standard.find(m => !currentModels.includes(m)) || 'gemini-3.1-flash-lite';
+            this.localModelsConfig.push({ model: nextAvailable, priority: false });
+            this.checkModelsDirty();
+        },
+
+        resetModelsConfig() {
+            // Reverts back to factory settings, then checks if that actually differs from saved backend data
+            this.localModelsConfig = [
+                { model: 'gemini-3.1-flash-lite', priority: true },
+                { model: 'gemini-3.5-flash', priority: true }
+            ];
+            this.checkModelsDirty();
+        },
+
+        deleteModel(index) {
+            this.localModelsConfig.splice(index, 1);
+            this.checkModelsDirty();
+        },
+
+        updateModelValue(index, value) {
+            this.localModelsConfig[index].model = value;
+            this.checkModelsDirty();
+        },
+
+        moveModelUp(index) {
+            if (index > 0) {
+                const arr = this.localModelsConfig;
+                const temp = arr[index];
+                arr[index] = arr[index - 1];
+                arr[index - 1] = temp;
+                this.checkModelsDirty();
+            }
+        },
+
+        moveModelDown(index) {
+            if (index < this.localModelsConfig.length - 1) {
+                const arr = this.localModelsConfig;
+                const temp = arr[index];
+                arr[index] = arr[index + 1];
+                arr[index + 1] = temp;
+                this.checkModelsDirty();
+            }
+        },
+
+        async saveModelsConfig() {
+            const res = await this.post('/set_models_config', { models_config: this.localModelsConfig });
+            if (res.ok) {
+                // Keep the runtime config synchronized with what we just saved
+                if (!this.config) this.config = {};
+                this.config.models_config = JSON.parse(JSON.stringify(this.localModelsConfig));
+                this.checkModelsDirty();
+            }
         },
     };
 }

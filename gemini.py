@@ -47,7 +47,9 @@ def render_prompt(template: str, servo_names: dict, target_key: str) -> str:
     retry=retry_if_exception_type(Exception),
     reraise=True,
 )
-def get_extracted_otps(image_path, target_key, prompt_template=None, servo_names=None):
+def get_extracted_otps(
+    image_path, target_key, prompt_template=None, servo_names=None, models_config=None
+):
     client = genai.Client(api_key=os.getenv("API_KEY"))
 
     image = Image.open(image_path)
@@ -60,24 +62,35 @@ def get_extracted_otps(image_path, target_key, prompt_template=None, servo_names
     names = servo_names if servo_names else {}
     instructions = render_prompt(template, names, target_key)
 
-    config = types.GenerateContentConfig(
-        system_instruction=instructions,
-        temperature=0.0,
-        response_mime_type="application/json",
-        service_tier="priority",
-        response_schema=types.Schema(
-            type=types.Type.OBJECT,
-            properties={
-                target_key: types.Schema(type=types.Type.STRING, nullable=True),
-            },
-            required=[target_key],
-        ),
-    )
+    # Use dynamic model ordering and fallback list from app config if provided
+    if models_config and isinstance(models_config, list) and len(models_config) > 0:
+        models_to_run = [m["model"] for m in models_config if m.get("model")]
+        model_priority_map = {
+            m["model"]: m.get("priority", False)
+            for m in models_config
+            if m.get("model")
+        }
+    else:
+        models_to_run = ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
+        model_priority_map = {"gemini-3.1-flash-lite": True, "gemini-3.5-flash": True}
 
-    models = ["gemini-3.1-flash-lite", "gemini-3.5-flash"]
     last_exception = None
 
-    for model in models:
+    for idx, model in enumerate(models_to_run):
+        is_priority = model_priority_map.get(model, False)
+        config = types.GenerateContentConfig(
+            system_instruction=instructions,
+            temperature=0.0,
+            response_mime_type="application/json",
+            service_tier="priority" if is_priority else None,
+            response_schema=types.Schema(
+                type=types.Type.OBJECT,
+                properties={
+                    target_key: types.Schema(type=types.Type.STRING, nullable=True),
+                },
+                required=[target_key],
+            ),
+        )
         try:
             response = client.models.generate_content(
                 model=model,
@@ -87,9 +100,12 @@ def get_extracted_otps(image_path, target_key, prompt_template=None, servo_names
             return json.loads(response.text)
         except Exception as e:
             print(f"Model {model} failed with error: {e}")
-            print(
-                f"Falling back to {models[models.index(model) + 1] if models.index(model) + 1 < len(models) else 'no more models'}"
+            next_model_msg = (
+                models_to_run[idx + 1]
+                if idx + 1 < len(models_to_run)
+                else "no more models"
             )
+            print(f"Falling back to {next_model_msg}")
             last_exception = e
 
     raise last_exception

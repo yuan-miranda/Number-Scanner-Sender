@@ -201,9 +201,11 @@ body {
     transition: transform 0.2s ease;
     color: var(--text-muted);
 }
+
 .chevron.open {
     transform: rotate(180deg);
 }
+
 .servo-details[open] .accordion-chevron {
     transform: rotate(180deg);
 }
@@ -211,6 +213,7 @@ body {
 .prompt-menu-container.is-open {
     border-color: var(--border);
 }
+
 .prompt-menu-container.is-open .servo-summary {
     background: var(--btn-hover-bg);
     border-bottom-color: var(--border);
@@ -258,7 +261,7 @@ body {
     font-size: 14px;
     margin-left: 3px;
     line-height: 1;
-    transform: translateY(1px); 
+    transform: translateY(1px);
     user-select: none;
 }
 
@@ -498,6 +501,7 @@ button {
     .dashboard-container {
         flex-direction: column;
     }
+
     .panel-left {
         flex: none;
     }
@@ -589,7 +593,8 @@ button {
 .prompt-editor-body {
     position: relative;
     flex: 1;
-    min-height: 0; /* Ensures inner flex items correctly clip overflow */
+    min-height: 0;
+    /* Ensures inner flex items correctly clip overflow */
     display: flex;
     flex-direction: column;
 }
@@ -601,7 +606,8 @@ button {
     white-space: pre-wrap;
     word-break: break-word;
     overflow-y: auto;
-    color: transparent; /* hide standard text, keep highlight background */
+    color: transparent;
+    /* hide standard text, keep highlight background */
     pointer-events: none;
     z-index: 1;
     font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
@@ -620,7 +626,7 @@ button {
     border: none;
     resize: none;
     font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
-    font-size: 15px; 
+    font-size: 15px;
     line-height: 1.65;
     background: transparent;
     color: var(--text-main);
@@ -636,7 +642,8 @@ button {
 .prompt-preview {
     flex: 1;
     width: 100%;
-    min-height: 0; /* fixes nested flex overflow boundaries */
+    min-height: 0;
+    /* fixes nested flex overflow boundaries */
     padding: 18px 20px;
     margin: 0;
     white-space: pre-wrap;
@@ -645,7 +652,7 @@ button {
     background: var(--input-bg);
     color: var(--text-main);
     font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
-    font-size: 15px; 
+    font-size: 15px;
     line-height: 1.65;
     transition: background .2s, color .2s;
 }
@@ -682,6 +689,123 @@ mark.hl-placeholder-bg {
     color: transparent;
     border-radius: 4px;
 }
+
 [data-theme="dark"] mark.hl-placeholder-bg {
     background-color: rgba(251, 146, 60, 0.2);
+}
+
+/* ── Prompt Config View Styling ── */
+.prompt-config-body {
+    padding: 16px;
+    overflow-y: auto;
+    max-height: calc(100% - 50px);
+    display: flex;
+    flex-direction: column;
+}
+
+.config-title {
+    margin-top: 0;
+    font-size: 1rem;
+    margin-bottom: 8px;
+    color: var(--text-main);
+    font-weight: 700;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+.config-description {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin-bottom: 16px;
+    line-height: 1.5;
+}
+
+.config-grid-list {
+    display: flex;
+    flex-direction: column;
+    /* gap: 2px; */
+    margin-bottom: 8px;
+}
+
+.config-row-minimal {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 4px 0;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.config-row-left {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex: 1;
+    min-width: 200px;
+}
+
+.config-select {
+    flex: 1;
+    padding: 6px 12px;
+    font-size: 13px;
+    border-radius: 2px;
+    border: 1px solid var(--input-border);
+    background: var(--input-bg);
+    color: var(--text-main);
+    font-family: monospace;
+    outline: none;
+}
+
+.config-row-right {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+}
+
+.config-checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text-muted);
+    cursor: pointer;
+    user-select: none;
+}
+
+.config-checkbox {
+    cursor: pointer;
+    width: 14px;
+    height: 14px;
+    accent-color: var(--text-main);
+}
+
+.config-arrow-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+}
+
+.config-delete-btn {
+    padding: 4px 8px;
+    font-size: 11px;
+    background: rgba(239, 68, 68, 0.1);
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.2);
+}
+
+.config-delete-btn:hover {
+    background: rgba(239, 68, 68, 0.2);
+    border-color: #ef4444;
+}
+
+.add-model-btn {
+    font-size: 12px;
+    padding: 6px 12px;
+    align-self: flex-start;
+}
+
+button.btn-set:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    pointer-events: none;
 }
