@@ -4,7 +4,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OTP Control Panel</title>
+    <title>SERVO/OTP Control Panel</title>
     <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.1/dist/cdn.min.js"></script>
     <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
@@ -12,7 +12,7 @@
 <body x-data="otpPanel()" x-init="init()" :data-theme="dark ? 'dark' : 'light'">
 
     <div class="topbar">
-        <span class="topbar-title">OTP Control Panel</span>
+        <span class="topbar-title">Control Panel</span>
         <label class="theme-toggle" title="Toggle dark mode" @click="dark = !dark">
             <span x-text="dark ? 'Dark' : 'Light'"></span>
             <div class="toggle-track"></div>
@@ -22,7 +22,7 @@
     <div class="dashboard-container">
 
         <div class="panel-left">
-            <h2>Servo Controls</h2>
+            <h2>Servo/OTP Controls</h2>
 
             <template x-if="configLoaded === true">
                 <div>
