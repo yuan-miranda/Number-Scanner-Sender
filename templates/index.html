@@ -48,11 +48,9 @@
                                 <div class="servo-field">
                                     <div class="field-label">Angle (°)</div>
                                     <div class="servo-controls">
-                                        <input type="number" title="Servo angle (1-180°)" :value="angles[token.id]"
-                                            min="1" max="180" @input="onAngleInput($event)"
-                                            @blur="saveAngleOnBlur($event, token.id)">
-                                        <button class="btn-set" title="Fire servo at this angle once"
-                                            @click="testServo($el, token.id)">TRY</button>
+                                        <input type="number" :value="angles[token.id]" min="1" max="180"
+                                            @input="onAngleInput($event)" @blur="saveAngleOnBlur($event, token.id)">
+                                        <button class="btn-set" @click="testServo($el, token.id)">TRY</button>
                                     </div>
                                 </div>
 
@@ -61,8 +59,7 @@
                                     <div class="servo-controls">
                                         <input type="text" class="meta-input name-input" :value="token.displayName"
                                             @input="dirtyName = $el.value.trim() !== (token.displayName || ''); onNameInput($event)">
-                                        <button class="btn-set" title="Save display name"
-                                            :class="{'btn-dirty': dirtyName}"
+                                        <button class="btn-set" :class="{'btn-dirty': dirtyName}"
                                             @click="if(saveName($el, token)) dirtyName = false">Set</button>
                                     </div>
                                 </div>
@@ -73,13 +70,12 @@
                                         <input type="text" class="meta-input alias-input"
                                             placeholder="e.g. woori, wr, wuri" :value="token.aliasString"
                                             @input="dirtyAliases = $el.value.trim() !== (token.aliasString || ''); onAliasInput($event)">
-                                        <button class="btn-set" title="Save aliases (comma-separated)"
-                                            :class="{'btn-dirty': dirtyAliases}"
+                                        <button class="btn-set" :class="{'btn-dirty': dirtyAliases}"
                                             @click="if(saveAliases($el, token)) dirtyAliases = false">Set</button>
                                     </div>
                                 </div>
 
-                                <label class="toggle-row" title="Re-fire the servo after capture completes">
+                                <label class="toggle-row">
                                     <input type="checkbox" :checked="reTriggers[token.id]"
                                         @change="onReTriggerChange($event, token.id)">
                                     Re-trigger after capture
@@ -104,7 +100,7 @@
                     <div class="servo-controls">
                         <input type="number" :value="cameras[side]" min="0" max="3"
                             @input="dirty = Number($el.value) !== cameras[side]; onCamIdInput($event)">
-                        <button class="btn-set" title="Apply camera ID and reconnect" :class="{'btn-dirty': dirty}"
+                        <button class="btn-set" :class="{'btn-dirty': dirty}"
                             @click="saveCamera($el, side); dirty = false">Set</button>
                     </div>
                 </div>
@@ -115,7 +111,7 @@
                 <div class="servo-controls">
                     <input type="number" :value="captureDelay" min="1000" max="5000"
                         @input="dirty = Number($el.value) !== captureDelay; onDelayInput($event)">
-                    <button class="btn-set" title="Save capture delay (ms)" :class="{'btn-dirty': dirty}"
+                    <button class="btn-set" :class="{'btn-dirty': dirty}"
                         @click="saveCaptureDelay($el); dirty = false">Set</button>
                 </div>
             </div>
@@ -149,7 +145,7 @@
                 <div class="stream-box">
                     <div class="stream-header">
                         <span x-text="camLabel('left')"></span>
-                        <button class="stream-btn" :class="{ closed: !camOpen.left }" title="Toggle left camera feed"
+                        <button class="stream-btn" :class="{ closed: !camOpen.left }"
                             x-text="camOpen.left ? 'Close' : 'Open'" @click="toggleCamera('left')">
                         </button>
                     </div>
@@ -160,7 +156,7 @@
                 <div class="stream-box">
                     <div class="stream-header">
                         <span x-text="camLabel('right')"></span>
-                        <button class="stream-btn" :class="{ closed: !camOpen.right }" title="Toggle right camera feed"
+                        <button class="stream-btn" :class="{ closed: !camOpen.right }"
                             x-text="camOpen.right ? 'Close' : 'Open'" @click="toggleCamera('right')">
                         </button>
                     </div>
@@ -171,8 +167,7 @@
                 <div class="stream-box">
                     <div class="stream-header">
                         <span>Latest Capture</span>
-                        <button class="stream-btn" title="Reload latest capture" @click="reloadCapture()">↻
-                            Reload</button>
+                        <button class="stream-btn" @click="reloadCapture()">↻ Reload</button>
                     </div>
                     <img :src="latestSrc" :style="captureMissing ? 'visibility:hidden' : ''"
                         @error="captureMissing = true; capturePolling = false"
@@ -187,10 +182,8 @@
                 <div class="prompt-editor-header">
                     <div class="prompt-tab-row">
                         <button class="prompt-tab" :class="{ active: !promptPreviewMode && !promptConfigMode }"
-                            title="Edit prompt template"
                             @click="promptPreviewMode = false; promptConfigMode = false;">Edit</button>
                         <button class="prompt-tab" :class="{ active: promptPreviewMode && !promptConfigMode }"
-                            title="Preview with resolved servo names"
                             @click="promptPreviewMode = true; promptConfigMode = false;">Preview</button>
                         <button class="prompt-tab" :class="{ active: promptConfigMode }"
                             @click="promptConfigMode = true; promptPreviewMode = false;">
@@ -205,15 +198,13 @@
                         </span>
                     </div>
                     <div class="prompt-action-row" x-show="!promptConfigMode">
-                        <button class="btn-set prompt-action-btn" title="Revert to default prompt"
-                            @click="resetPrompt()">Reset</button>
-                        <button class="btn-set prompt-action-btn prompt-set-btn" title="Save prompt to server"
+                        <button class="btn-set prompt-action-btn" @click="resetPrompt()">Reset</button>
+                        <button class="btn-set prompt-action-btn prompt-set-btn"
                             :class="{ 'btn-dirty': promptText !== savedPromptText }" @click="savePrompt()">Set</button>
                     </div>
                     <div class="prompt-action-row" x-show="promptConfigMode">
-                        <button class="btn-set prompt-action-btn" title="Revert to default model list"
-                            @click="resetModelsConfig()">Reset</button>
-                        <button class="btn-set prompt-action-btn prompt-set-btn" title="Save model config to server"
+                        <button class="btn-set prompt-action-btn" @click="resetModelsConfig()">Reset</button>
+                        <button class="btn-set prompt-action-btn prompt-set-btn"
                             :class="{ 'btn-dirty': modelsConfigDirty }" @click="saveModelsConfig()">Set Config</button>
                     </div>
                 </div>
@@ -224,18 +215,13 @@
                         spellcheck="false" placeholder="Enter Gemini prompt template…"></textarea>
                 </div>
 
-                <div class="prompt-editor-body is-preview" x-show="promptPreviewMode && !promptConfigMode">
-                    <div class="prompt-textarea-backdrop" x-html="promptPreviewHTML()" x-ref="previewBackdrop"></div>
-                    <textarea class="prompt-textarea" readonly :value="promptText"
-                        @scroll="$refs.previewBackdrop.scrollTop = $el.scrollTop; $refs.previewBackdrop.scrollLeft = $el.scrollLeft"
-                        spellcheck="false"></textarea>
-                </div>
+                <pre class="prompt-preview" x-show="promptPreviewMode && !promptConfigMode"
+                    x-html="promptPreviewHTML()"></pre>
 
                 <div class="prompt-config-body" x-show="promptConfigMode">
                     <h3 class="config-title">Model Fallbacks</h3>
                     <p class="config-description">
-                        Execution flows top to bottom. If one fails, the next triggers automatically. Check Priority
-                        Tier to enable priority queuing from the Gemini API.
+                        Execution flows top to bottom. If one fails, the next triggers automatically. Check Priority Tier to enable priority queuing from the Gemini API.
                     </p>
 
                     <div class="config-grid-list">
@@ -252,8 +238,7 @@
                                 </div>
 
                                 <div class="config-row-right">
-                                    <label class="config-checkbox-label"
-                                        title="Enable Gemini priority service tier for this model">
+                                    <label class="config-checkbox-label">
                                         <input type="checkbox" :checked="item.priority"
                                             @change="item.priority = $event.target.checked; checkModelsDirty();"
                                             class="config-checkbox">
@@ -261,23 +246,21 @@
                                     </label>
 
                                     <div style="display: flex; gap: 4px;">
-                                        <button class="btn-set config-arrow-btn" title="Move up in fallback order"
-                                            :disabled="index === 0" @click="moveModelUp(index)">▲</button>
+                                        <button class="btn-set config-arrow-btn" :disabled="index === 0"
+                                            @click="moveModelUp(index)">▲</button>
 
-                                        <button class="btn-set config-arrow-btn" title="Move down in fallback order"
+                                        <button class="btn-set config-arrow-btn"
                                             :disabled="index === localModelsConfig.length - 1"
                                             @click="moveModelDown(index)">▼</button>
 
-                                        <button class="btn-set config-delete-btn" title="Remove this model"
-                                            @click="deleteModel(index)">✕</button>
+                                        <button class="btn-set config-delete-btn" @click="deleteModel(index)">✕</button>
                                     </div>
                                 </div>
                             </div>
                         </template>
                     </div>
 
-                    <button class="btn-set add-model-btn" title="Add next model in fallback chain (max 4)"
-                        :disabled="localModelsConfig.length >= 4" @click="addModelRow()">+ Add Fallback Model</button>
+                    <button class="btn-set add-model-btn" @click="addModelRow()">+ Add Fallback Model</button>
                 </div>
             </div>
 
