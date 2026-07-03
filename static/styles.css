@@ -639,48 +639,13 @@ button {
     outline: none;
 }
 
-.prompt-preview {
-    flex: 1;
-    width: 100%;
-    min-height: 0;
-    /* fixes nested flex overflow boundaries */
-    padding: 18px 20px;
-    margin: 0;
-    white-space: pre-wrap;
-    word-break: break-word;
-    overflow-y: auto;
-    background: var(--input-bg);
-    color: var(--text-main);
-    font-family: 'Consolas', 'Monaco', 'Bitstream Vera Sans Mono', 'Lucida Console', monospace;
-    font-size: 15px;
-    line-height: 1.65;
-    transition: background .2s, color .2s;
+.prompt-textarea-readonly {
+    caret-color: transparent;
+    cursor: default;
 }
 
-mark.hl-name {
-    background-color: rgba(43, 158, 250, 0.2);
-    color: #0284c7;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-weight: 600;
-}
-
-[data-theme="dark"] mark.hl-name {
-    background-color: rgba(56, 189, 248, 0.2);
-    color: #38bdf8;
-}
-
-mark.hl-placeholder {
-    background-color: rgba(251, 146, 60, 0.2);
-    color: #ea580c;
-    padding: 2px 4px;
-    border-radius: 4px;
-    font-weight: 600;
-}
-
-[data-theme="dark"] mark.hl-placeholder {
-    background-color: rgba(251, 146, 60, 0.2);
-    color: #fb923c;
+.prompt-textarea-readonly::selection {
+    background: transparent;
 }
 
 /* specifically for the text edit overlay highlights */

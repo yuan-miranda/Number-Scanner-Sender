@@ -182,7 +182,8 @@
                 <div class="prompt-editor-header">
                     <div class="prompt-tab-row">
                         <button class="prompt-tab" :class="{ active: !promptPreviewMode && !promptConfigMode }"
-                            @click="promptPreviewMode = false; promptConfigMode = false;">Edit</button>
+                            @click="promptPreviewMode = false; promptConfigMode = false;">Edit <span class="unsaved"
+                                x-show="promptText !== savedPromptText" style="display: none; font-size: 11px;">*</span></button>
                         <button class="prompt-tab" :class="{ active: promptPreviewMode && !promptConfigMode }"
                             @click="promptPreviewMode = true; promptConfigMode = false;">Preview</button>
                         <button class="prompt-tab" :class="{ active: promptConfigMode }"
@@ -215,8 +216,12 @@
                         spellcheck="false" placeholder="Enter Gemini prompt template…"></textarea>
                 </div>
 
-                <pre class="prompt-preview" x-show="promptPreviewMode && !promptConfigMode"
-                    x-html="promptPreviewHTML()"></pre>
+                <div class="prompt-editor-body" x-show="promptPreviewMode && !promptConfigMode">
+                    <div class="prompt-textarea-backdrop" x-html="promptPreviewHTML()" x-ref="previewBackdrop"></div>
+                    <textarea class="prompt-textarea prompt-textarea-readonly" :value="promptPreviewText()"
+                        readonly tabindex="-1"
+                        @scroll="$refs.previewBackdrop.scrollTop = $el.scrollTop; $refs.previewBackdrop.scrollLeft = $el.scrollLeft"></textarea>
+                </div>
 
                 <div class="prompt-config-body" x-show="promptConfigMode">
                     <h3 class="config-title">Model Fallbacks</h3>
@@ -260,7 +265,7 @@
                         </template>
                     </div>
 
-                    <button class="btn-set add-model-btn" @click="addModelRow()">+ Add Fallback Model</button>
+                    <button class="btn-set add-model-btn" :disabled="!canAddModelRow()" @click="addModelRow()">+ Add Fallback Model</button>
                 </div>
             </div>
 

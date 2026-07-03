@@ -2,6 +2,12 @@ function otpPanel() {
     return {
         // ── constants ──────────────────────────────────────────────
         SIDES: ['left', 'right'],
+        MODEL_OPTIONS: [
+            'gemini-3.1-flash-lite',
+            'gemini-3.5-flash',
+            'gemini-2.5-flash',
+            'gemini-2.5-pro'
+        ],
 
         // ── state ──────────────────────────────────────────────────
         dark: false,
@@ -328,17 +334,28 @@ function otpPanel() {
             return out;
         },
 
+        promptPreviewText() {
+            let out = this.promptText || '';
+            const names = this.promptServoNames();
+
+            Object.entries(names).forEach(([id, name]) => {
+                out = out.split(`{servo${id}}`).join(name);
+            });
+
+            return out;
+        },
+
         promptPreviewHTML() {
-            let out = this.escapeHTML(this.promptText);
+            let out = this.escapeHTML(this.promptText || '');
             const names = this.promptServoNames();
 
             Object.entries(names).forEach(([id, name]) => {
                 const safeName = this.escapeHTML(name);
-                const placeholder = `{servo${id}}`;
-                out = out.split(placeholder).join(`<mark class="hl-name">${safeName}</mark>`);
+                out = out.split(`{servo${id}}`).join(`<mark class="hl-placeholder-bg">${safeName}</mark>`);
             });
 
-            out = out.replace(/\{(servo\d+|target_key)\}/g, match => `<mark class="hl-placeholder">${match}</mark>`);
+            out = out.replace(/\{target_key\}/g, '<mark class="hl-placeholder-bg">{target_key}</mark>');
+            if (out.endsWith('\n')) out += ' ';
             return out;
         },
 
@@ -364,10 +381,14 @@ function otpPanel() {
             this.modelsConfigDirty = (savedStr !== currentStr);
         },
 
+        canAddModelRow() {
+            return this.localModelsConfig.length < this.MODEL_OPTIONS.length;
+        },
+
         addModelRow() {
             const currentModels = this.localModelsConfig.map(m => m.model);
-            const standard = ['gemini-3.1-flash-lite', 'gemini-3.5-flash', 'gemini-2.5-flash', 'gemini-2.5-pro'];
-            const nextAvailable = standard.find(m => !currentModels.includes(m)) || 'gemini-3.1-flash-lite';
+            const nextAvailable = this.MODEL_OPTIONS.find(m => !currentModels.includes(m));
+            if (!nextAvailable) return;
             this.localModelsConfig.push({ model: nextAvailable, priority: false });
             this.checkModelsDirty();
         },
