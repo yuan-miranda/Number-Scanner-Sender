@@ -73,7 +73,7 @@ function otpPanel() {
 
         isNameValid(v) {
             const s = v.trim();
-            return s === '' || /^[A-Za-z ]{1,12}$/.test(s);
+            return s === '' || /^[A-Za-z0-9 ]{1,12}$/.test(s);
         },
 
         isAliasListValid(v) {
@@ -81,7 +81,7 @@ function otpPanel() {
             if (s === '') return true;
             const parts = s.split(',');
             if (parts.some(p => p.trim() === '')) return false;
-            return parts.every(p => /^[A-Za-z]{1,24}$/.test(p.trim()));
+            return parts.every(p => /^[A-Za-z0-9]{1,24}$/.test(p.trim()));
         },
 
         parseAliases(v) {
@@ -172,7 +172,7 @@ function otpPanel() {
             const input = el.closest('.servo-controls').querySelector('input.name-input');
             if (!this.isNameValid(input.value)) {
                 input.classList.add('invalid');
-                alert('Name must be letters only, up to 12 characters (or blank to clear it)');
+                alert('Name must be letters or numbers only, up to 12 characters (or blank to clear it)');
                 return false;
             }
             input.classList.remove('invalid');
@@ -193,7 +193,7 @@ function otpPanel() {
             const input = el.closest('.servo-controls').querySelector('input.alias-input');
             if (!this.isAliasListValid(input.value)) {
                 input.classList.add('invalid');
-                alert('Aliases must be comma-separated, letters only, up to 24 characters each (no blank entries)');
+                alert('Aliases must be comma-separated, letters or numbers only, up to 24 characters each (no blank entries)');
                 return false;
             }
             input.classList.remove('invalid');

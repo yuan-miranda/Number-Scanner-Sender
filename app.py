@@ -460,7 +460,7 @@ def _build_token_lookup():
         camera_side = SERVO_CAMERA_SIDE.get(sid, "left")
         token = {"key": key, "servo": int(sid), "camera": camera_side}
         for alias in [key] + aliases:
-            clean = re.sub(r"[^a-z]", "", alias)
+            clean = re.sub(r"[^a-z0-9]", "", alias)
             if clean:
                 lookup[clean] = token
     return lookup
@@ -468,7 +468,7 @@ def _build_token_lookup():
 
 def match_token(message: str):
     lookup = _build_token_lookup()
-    clean = re.sub(r"[^a-z]", "", message.strip().lower())
+    clean = re.sub(r"[^a-z0-9]", "", message.strip().lower())
     return lookup.get(clean)
 
 
