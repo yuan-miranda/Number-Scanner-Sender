@@ -69,9 +69,6 @@ def get_extracted_otps(
     image = Image.open(image_path)
     image.thumbnail((768, 768))
 
-    ref_image = Image.open("captures/reference_image.jpg")
-    ref_image.thumbnail((768, 768))
-
     instructions = render_prompt(
         prompt_template or DEFAULT_PROMPT_TEMPLATE,
         servo_names or {},
@@ -93,7 +90,7 @@ def get_extracted_otps(
         try:
             response = client.models.generate_content(
                 model=model,
-                contents=[image, ref_image],
+                contents=[image],
                 config=config,
             )
             return json.loads(response.text)
