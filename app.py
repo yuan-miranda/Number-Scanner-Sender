@@ -441,11 +441,11 @@ def video_feed(camera_id):
 # Hardcoded camera side mapping (servo id → which camera to use for capture).
 # Edit this if your physical setup changes.
 SERVO_CAMERA_SIDE = {
-    "1": "right",
-    "2": "right",
+    "1": "left",
+    "2": "left",
     "3": "left",
     "4": "right",
-    "5": "left",
+    "5": "right",
 }
 
 
