@@ -17,17 +17,15 @@ load_dotenv()
 DEFAULT_PROMPT_TEMPLATE = (
     "Extract the 6-digit OTP code strictly for the '{target_key}' token into a JSON object.\n"
     "For the camera view showing THREE OTP devices:\n"
-    "- '{servo1}': The LEFT BOTTOM display.\n"
-    "- '{servo2}': The LEFT TOP display.\n"
-    "- '{servo4}': The RIGHTMOST display (purple).\n"
-    "For the camera view showing TWO OTP displays:\n"
+    "- '{servo1}': The BOTTOM display (labeled '{servo1}').\n"
+    "- '{servo2}': The CENTER display (also labelled as '{servo1}' but on the center of them three).\n"
     "- '{servo3}': The TOP display (labeled 'kakaobank').\n"
-    "- '{servo5}': The BOTTOM display (labeled '{servo5}').\n\n"
+    "For the camera view showing TWO OTP displays:\n"
+    "- '{servo4}': The BOTTOM display (purple with cartoon).\n"
+    "- '{servo5}': The TOP display (labelled '{servo1}' and has also label of 'choi su hyun woori').\n\n"
     "Rules:\n"
     "- Only extract the 6-digit number visible on the device screen for '{target_key}'.\n"
     "- If the '{target_key}' device is completely missing, or its screen is blank/off, return null.\n"
-    "- Ignore all other devices in the image.\n"
-    "- {servo1} and {servo2} are identical, so follow the guide labelled reference image attached.\n"
     "- Output MUST strictly use this exact key: '{target_key}'."
 )
 
