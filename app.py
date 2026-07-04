@@ -392,23 +392,16 @@ def fire_servo():
     servo = request.args.get("servo")
     try:
         angle = int(request.args.get("angle"))
-        reset_angle = int(request.args.get("reset_angle", 0))
     except (TypeError, ValueError):
         return jsonify({"status": "error", "message": "Invalid angle value"}), 400
 
-    if (
-        servo not in VALID_SERVOS
-        or not (1 <= angle <= 180)
-        or not (0 <= reset_angle <= 180)
-    ):
+    if servo not in VALID_SERVOS or not (1 <= angle <= 180):
         return (
-            jsonify(
-                {"status": "error", "message": "Invalid servo or angle parameters"}
-            ),
+            jsonify({"status": "error", "message": "Invalid servo or angle parameters"}),
             400,
         )
 
-    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}&reset_angle={reset_angle}"
+    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}"
     try:
         with httpx.Client() as client:
             resp = client.get(url, timeout=10.0)
@@ -488,7 +481,7 @@ group_chat_id = int(os.getenv("GROUP_CHAT_ID"))
 
 async def trigger_servo(servo_number):
     angle = app_config["angles"].get(str(servo_number), 180)
-    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}&reset_angle=0"
+    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}"
     async with httpx.AsyncClient() as http_client:
         try:
             response = await http_client.get(url, timeout=10.0)

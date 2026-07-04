@@ -159,7 +159,7 @@ function otpPanel() {
             const input = el.closest('.servo-controls').querySelector('input[type=number]');
             const v = Number(input.value);
             if (this.isAngleValid(v))
-                fetch(`/fire_servo?servo=${id}&angle=${v}&reset_angle=0`);
+                fetch(`/fire_servo?servo=${id}&angle=${v}`);
         },
 
         // ── name ───────────────────────────────────────────────────

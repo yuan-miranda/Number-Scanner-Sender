@@ -11,6 +11,7 @@ Servo servos[5];
 // DONT REMOVE FOR FUTURE USE {4, 13, 16, 17, 18, 19, 21, 22, 25, 26}
 const int servoPins[] = {4, 13, 14, 25, 26};
 const int servoCount = sizeof(servoPins) / sizeof(servoPins[0]);
+const int idleAngle = 180;
 
 void handleActivate() {
   if (!server.hasArg("servo") || !server.hasArg("angle")) {
@@ -20,8 +21,6 @@ void handleActivate() {
 
   int servoNum = server.arg("servo").toInt();
   int targetAngle = server.arg("angle").toInt();
-  int resetAngle =
-      server.hasArg("reset_angle") ? server.arg("reset_angle").toInt() : 0;
 
   if (servoNum < 1 || servoNum > servoCount) {
     server.send(400, "text/plain", "Servo out of range");
@@ -29,12 +28,12 @@ void handleActivate() {
   }
 
   targetAngle = constrain(targetAngle, 1, 180);
-  resetAngle = constrain(resetAngle, 0, 180);
+  targetAngle = 180 - targetAngle;
 
   int index = servoNum - 1;
   servos[index].write(targetAngle);
-  delay(50);
-  servos[index].write(resetAngle);
+  delay(1000);
+  servos[index].write(idleAngle);
 
   server.send(200, "text/plain", "OK");
 }
@@ -50,7 +49,7 @@ void setup() {
 
   for (int i = 0; i < servoCount; i++) {
     servos[i].attach(servoPins[i]);
-    servos[i].write(0);
+    servos[i].write(idleAngle);
   }
 
   WiFi.begin(ssid, password);
