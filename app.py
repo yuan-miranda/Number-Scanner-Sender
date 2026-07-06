@@ -487,6 +487,7 @@ async def trigger_servo(servo_number):
             response = await http_client.get(url, timeout=10.0)
             return response.status_code == 200
         except Exception:
+            logging.exception("Failed to trigger servo %s", servo_number)
             return False
 
 
@@ -501,51 +502,57 @@ async def handle_otp_requests(event):
     if token is None:
         return
 
+    reply_text = "null"
+    otp_data = None
     async with processing_lock:
-        await trigger_servo(token["servo"])
+        try:
+            await trigger_servo(token["servo"])
 
-        capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
-        await asyncio.sleep(capture_delay_s)
+            capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
+            await asyncio.sleep(capture_delay_s)
 
-        camera_index = int(app_config["cameras"][token["camera"]])
-        frame = cam_manager.get_frame(camera_index)
+            camera_index = int(app_config["cameras"][token["camera"]])
+            frame = cam_manager.get_frame(camera_index)
 
-        os.makedirs("captures", exist_ok=True)
-        image_path = "captures/latest.jpg"
-        if frame is not None:
-            cv2.imwrite(image_path, frame)
-        else:
-            image_path = None
+            os.makedirs("captures", exist_ok=True)
+            image_path = "captures/latest.jpg"
+            if frame is not None:
+                cv2.imwrite(image_path, frame)
+            else:
+                image_path = None
 
-        otp_data = None
-        if image_path:
-            template = app_config.get("prompt_template") or None
-            servo_names = {
-                sid: (
-                    app_config.get("servo_meta", {})
-                    .get(sid, {})
-                    .get("name", "")
-                    .strip()
-                    or f"servo{sid}"
+            if image_path:
+                template = app_config.get("prompt_template") or None
+                servo_names = {
+                    sid: (
+                        app_config.get("servo_meta", {})
+                        .get(sid, {})
+                        .get("name", "")
+                        .strip()
+                        or f"servo{sid}"
+                    )
+                    for sid in sorted(VALID_SERVOS, key=int)
+                }
+                models_config = app_config.get("models_config", None)
+                otp_data = get_extracted_otps(
+                    image_path,
+                    token["key"],
+                    template,
+                    servo_names,
+                    models_config=models_config,
                 )
-                for sid in sorted(VALID_SERVOS, key=int)
-            }
-            models_config = app_config.get("models_config", None)
-            otp_data = get_extracted_otps(
-                image_path,
-                token["key"],
-                template,
-                servo_names,
-                models_config=models_config,
-            )
-        reply_text = "null"
-        if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
-            reply_text = str(otp_data[token["key"]]).strip()
+            if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
+                reply_text = str(otp_data[token["key"]]).strip()
+        except Exception:
+            logging.exception("OTP processing failed for token %s", token["key"])
 
         print(
             f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {token['key']}"
         )
-        await tg_client.send_message(event.chat_id, reply_text)
+        try:
+            await tg_client.send_message(event.chat_id, reply_text)
+        except Exception:
+            logging.exception("Failed to send Telegram reply for token %s", token["key"])
 
         if app_config.get("re_trigger", {}).get(str(token["servo"]), False):
             await asyncio.sleep(0.5)
