@@ -26,7 +26,6 @@ DEFAULT_PROMPT_TEMPLATE = (
     "Rules:\n"
     "- Only extract the 6-digit number visible on the device screen for '{target_key}'.\n"
     "- If the '{target_key}' device is completely missing, or its screen is blank/off, return null.\n"
-    "- Also include a 'visible' field with the value 'yes' if the '{target_key}' device is visible, otherwise 'no'.\n"
     "- Output MUST strictly use this exact key: '{target_key}'."
 )
 
@@ -49,14 +48,9 @@ def _build_config(
         response_schema=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                target_key: types.Schema(type=types.Type.STRING, nullable=True),
-                "visible": types.Schema(
-                    type=types.Type.STRING,
-                    enum=["yes", "no"],
-                    nullable=True,
-                ),
+                target_key: types.Schema(type=types.Type.STRING, nullable=True)
             },
-            required=[target_key, "visible"],
+            required=[target_key],
         ),
     )
 
