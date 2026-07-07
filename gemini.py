@@ -16,6 +16,7 @@ load_dotenv()
 
 DEFAULT_PROMPT_TEMPLATE = (
     "Extract the 6-digit OTP code strictly for the '{target_key}' token into a JSON object.\n"
+    "Always include an 'isVisible' boolean for the target device.\n"
     "For the camera view showing THREE OTP devices:\n"
     "- '{servo1}': The BOTTOM display (labeled '{servo1}').\n"
     "- '{servo2}': The CENTER display (also labelled as '{servo1}' but on the center of them three).\n"
@@ -48,7 +49,8 @@ def _build_config(
         response_schema=types.Schema(
             type=types.Type.OBJECT,
             properties={
-                target_key: types.Schema(type=types.Type.STRING, nullable=True)
+                target_key: types.Schema(type=types.Type.STRING, nullable=True),
+                "isVisible": types.Schema(type=types.Type.BOOLEAN),
             },
             required=[target_key],
         ),

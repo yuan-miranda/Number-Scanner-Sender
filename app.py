@@ -472,6 +472,70 @@ def match_token(message: str):
     return lookup.get(clean)
 
 
+def _build_servo_names() -> dict[str, str]:
+    return {
+        sid: (
+            app_config.get("servo_meta", {}).get(sid, {}).get("name", "").strip()
+            or f"servo{sid}"
+        )
+        for sid in sorted(VALID_SERVOS, key=int)
+    }
+
+
+def _needs_visibility_retry(otp_data, target_key: str) -> bool:
+    if not isinstance(otp_data, dict):
+        return True
+    return otp_data.get(target_key) is None and "isVisible" not in otp_data
+
+
+async def _capture_and_extract_otp(token):
+    await trigger_servo(token["servo"])
+
+    capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
+    await asyncio.sleep(capture_delay_s)
+
+    camera_index = int(app_config["cameras"][token["camera"]])
+    frame = cam_manager.get_frame(camera_index)
+
+    os.makedirs("captures", exist_ok=True)
+    image_path = "captures/latest.jpg"
+    if frame is not None:
+        cv2.imwrite(image_path, frame)
+    else:
+        image_path = None
+
+    otp_data = None
+    if image_path:
+        template = app_config.get("prompt_template") or None
+        otp_data = get_extracted_otps(
+            image_path,
+            token["key"],
+            template,
+            _build_servo_names(),
+            models_config=app_config.get("models_config", None),
+        )
+
+    return image_path, otp_data
+
+
+async def _send_capture_prompt(event, token, image_path):
+    caption = (
+        f"OTP extraction needs review for {token['key']}. Please check the attached capture."
+    )
+    try:
+        if image_path and os.path.exists(image_path):
+            await tg_client.send_file(
+                event.chat_id,
+                image_path,
+                caption=caption,
+                reply_to=event.id,
+            )
+        else:
+            await tg_client.send_message(event.chat_id, caption, reply_to=event.id)
+    except Exception:
+        logging.exception("Failed to send Telegram capture prompt for token %s", token["key"])
+
+
 # ── telegram ───────────────────────────────────────────────────────────────────
 
 processing_lock = None
@@ -502,57 +566,40 @@ async def handle_otp_requests(event):
     if token is None:
         return
 
-    reply_text = "null"
-    otp_data = None
+    reply_text = None
+    image_path = None
     async with processing_lock:
         try:
-            await trigger_servo(token["servo"])
-
-            capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
-            await asyncio.sleep(capture_delay_s)
-
-            camera_index = int(app_config["cameras"][token["camera"]])
-            frame = cam_manager.get_frame(camera_index)
-
-            os.makedirs("captures", exist_ok=True)
-            image_path = "captures/latest.jpg"
-            if frame is not None:
-                cv2.imwrite(image_path, frame)
-            else:
-                image_path = None
-
-            if image_path:
-                template = app_config.get("prompt_template") or None
-                servo_names = {
-                    sid: (
-                        app_config.get("servo_meta", {})
-                        .get(sid, {})
-                        .get("name", "")
-                        .strip()
-                        or f"servo{sid}"
+            for attempt in range(2):
+                image_path, otp_data = await _capture_and_extract_otp(token)
+                if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
+                    reply_text = str(otp_data[token["key"]]).strip()
+                    break
+                if attempt == 0 and _needs_visibility_retry(otp_data, token["key"]):
+                    logging.info(
+                        "Retrying OTP extraction for token %s because isVisible was missing",
+                        token["key"],
                     )
-                    for sid in sorted(VALID_SERVOS, key=int)
-                }
-                models_config = app_config.get("models_config", None)
-                otp_data = get_extracted_otps(
-                    image_path,
-                    token["key"],
-                    template,
-                    servo_names,
-                    models_config=models_config,
-                )
-            if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
-                reply_text = str(otp_data[token["key"]]).strip()
+                    continue
+                break
         except Exception:
             logging.exception("OTP processing failed for token %s", token["key"])
 
-        print(
-            f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {token['key']}"
-        )
-        try:
-            await tg_client.send_message(event.chat_id, reply_text)
-        except Exception:
-            logging.exception("Failed to send Telegram reply for token %s", token["key"])
+        if reply_text is not None:
+            print(
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} replying '{reply_text}' from {token['key']}"
+            )
+            try:
+                await tg_client.send_message(event.chat_id, reply_text)
+            except Exception:
+                logging.exception(
+                    "Failed to send Telegram reply for token %s", token["key"]
+                )
+        else:
+            print(
+                f"{datetime.now().strftime('%Y-%m-%d %H:%M:%S')} sending capture prompt for {token['key']}"
+            )
+            await _send_capture_prompt(event, token, image_path)
 
         if app_config.get("re_trigger", {}).get(str(token["servo"]), False):
             await asyncio.sleep(0.5)
