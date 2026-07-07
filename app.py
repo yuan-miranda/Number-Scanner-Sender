@@ -523,15 +523,8 @@ async def _send_capture_prompt(event, token, image_path):
         f"OTP extraction needs review for {token['key']}. Please check the attached capture."
     )
     try:
-        if image_path and os.path.exists(image_path):
-            await tg_client.send_file(
-                event.chat_id,
-                image_path,
-                caption=caption,
-                reply_to=event.id,
-            )
-        else:
-            await tg_client.send_message(event.chat_id, caption, reply_to=event.id)
+        # Attachment sending is disabled for now; send a plain text prompt instead.
+        await tg_client.send_message(event.chat_id, caption, reply_to=event.id)
     except Exception:
         logging.exception("Failed to send Telegram capture prompt for token %s", token["key"])
 
@@ -570,7 +563,7 @@ async def handle_otp_requests(event):
     image_path = None
     async with processing_lock:
         try:
-            for attempt in range(2):
+            for attempt in range(3):
                 image_path, otp_data = await _capture_and_extract_otp(token)
                 if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
                     reply_text = str(otp_data[token["key"]]).strip()
