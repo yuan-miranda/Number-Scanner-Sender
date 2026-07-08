@@ -22,7 +22,7 @@ DEFAULT_PROMPT_TEMPLATE = (
     "- '{servo3}': The TOP display (labeled '{servo3}').\n"
     "For the camera view showing TWO OTP displays:\n"
     "- '{servo4}': The BOTTOM display (purple with cartoon).\n"
-    "- '{servo5}': The TOP display (label of 'choi su hyun woori').\n\n"
+    "- '{servo5}': The TOP display (label of 'choi su hyun').\n\n"
     "Rules:\n"
     "- Only extract the 6-digit number visible on the device screen for '{target_key}'.\n"
     "- If the '{target_key}' device is completely missing, or its screen is blank/off/unreadable, return null for its OTP and false for its visibility.\n"
