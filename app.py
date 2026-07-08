@@ -41,22 +41,19 @@ app = Flask(__name__)
 ESP32_IP = os.getenv("ESP32_IP")
 CONFIG_FILE = "config.json"
 
-# servo_meta shape: { "1": { "name": "Shinhan", "aliases": ["sh", "shinshan"] }, ... }
 DEFAULT_CONFIG = {
     "angles": {},
     "re_trigger": {},
     "servo_meta": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
-    "prompt_template": "",  # empty = use DEFAULT_PROMPT_TEMPLATE in gemini.py
+    "prompt_template": "",
     "models_config": [
         {"model": "gemini-3.1-flash-lite", "priority": True},
         {"model": "gemini-3.5-flash", "priority": True},
     ],
 }
 VALID_SIDES = {"left", "right"}
-
-# populated at startup once we know the servo count
 VALID_SERVOS: set[str] = set()
 
 
@@ -89,7 +86,6 @@ def save_config(config_dict):
 
 
 def ensure_servo_slots(config_dict, servo_ids: list[str]):
-    """Guarantee that angles / re_trigger / servo_meta have an entry for every servo."""
     for sid in servo_ids:
         config_dict["angles"].setdefault(sid, 180)
         config_dict["re_trigger"].setdefault(sid, False)
@@ -103,7 +99,6 @@ app_config = load_config()
 
 
 def fetch_servo_count() -> int:
-    """Ask the ESP32 how many servos it has.  Falls back to 5 on any error."""
     try:
         with httpx.Client() as client:
             resp = client.get(f"http://{ESP32_IP}/servo_count", timeout=5.0)
@@ -125,8 +120,6 @@ save_config(app_config)
 
 
 class CameraManager:
-    """Runs cameras in a background thread so web and telegram can share them."""
-
     def __init__(self):
         self.cameras = {}
         self.latest_frames = {}
@@ -208,7 +201,6 @@ def get_capture(filename):
 
 @app.route("/get_config")
 def get_config():
-    # Always include the live servo count so the frontend is in sync
     payload = dict(app_config)
     payload["servo_count"] = _servo_count
     return jsonify(payload)
@@ -255,7 +247,6 @@ def set_re_trigger():
 
 @app.route("/set_servo_meta", methods=["POST"])
 def set_servo_meta():
-    """Update the display name and/or aliases for a single servo."""
     data = request.get_json()
     servo = str(data.get("servo"))
 
@@ -268,7 +259,6 @@ def set_servo_meta():
         meta["name"] = str(data["name"]).strip()
 
     if "aliases" in data:
-        # Accept either a list or a comma-separated string
         raw = data["aliases"]
         if isinstance(raw, list):
             aliases = [a.strip() for a in raw if str(a).strip()]
@@ -317,7 +307,6 @@ def set_prompt():
     template = data.get("prompt_template", "")
     if not isinstance(template, str):
         return jsonify({"status": "error", "message": "Invalid prompt value"}), 400
-    # empty string = revert to default
     app_config["prompt_template"] = template.strip()
     save_config(app_config)
     return jsonify({"status": "ok"})
@@ -438,8 +427,6 @@ def video_feed(camera_id):
 
 # ── token matching ─────────────────────────────────────────────────────────────
 
-# Hardcoded camera side mapping (servo id → which camera to use for capture).
-# Edit this if your physical setup changes.
 SERVO_CAMERA_SIDE = {
     "1": "left",
     "2": "left",
@@ -450,7 +437,6 @@ SERVO_CAMERA_SIDE = {
 
 
 def _build_token_lookup():
-    """Build O(1) alias → servo dict from live config."""
     lookup: dict[str, dict] = {}
     for sid in sorted(VALID_SERVOS, key=int):
         meta = app_config.get("servo_meta", {}).get(sid, {})
@@ -485,7 +471,11 @@ def _build_servo_names() -> dict[str, str]:
 def _needs_visibility_retry(otp_data, target_key: str) -> bool:
     if not isinstance(otp_data, dict):
         return True
-    return otp_data.get(target_key) is None and "isVisible" not in otp_data
+    
+    visibility_key = f"{target_key}_isVisible"
+    if visibility_key not in otp_data or not otp_data[visibility_key]:
+        return True
+    return False
 
 
 async def _capture_and_extract_otp(token):
@@ -523,7 +513,6 @@ async def _send_capture_prompt(event, token, image_path):
         f"OTP extraction needs review for {token['key']}. Please check the attached capture."
     )
     try:
-        # Attachment sending is disabled for now; send a plain text prompt instead.
         await tg_client.send_message(event.chat_id, caption, reply_to=event.id)
     except Exception:
         logging.exception("Failed to send Telegram capture prompt for token %s", token["key"])
@@ -568,10 +557,11 @@ async def handle_otp_requests(event):
                 if otp_data and token["key"] in otp_data and otp_data[token["key"]]:
                     reply_text = str(otp_data[token["key"]]).strip()
                     break
-                if attempt == 0 and _needs_visibility_retry(otp_data, token["key"]):
+                if _needs_visibility_retry(otp_data, token["key"]):
                     logging.info(
-                        "Retrying OTP extraction for token %s because isVisible was missing",
+                        "Retrying OTP extraction for token %s (attempt %d/3) because it was not visible/readable.",
                         token["key"],
+                        attempt + 1,
                     )
                     continue
                 break

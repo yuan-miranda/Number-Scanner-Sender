@@ -13,10 +13,9 @@ from tenacity import (
 
 load_dotenv()
 
-
 DEFAULT_PROMPT_TEMPLATE = (
     "Extract the 6-digit OTP code strictly for the '{target_key}' token into a JSON object.\n"
-    "Always include an 'isVisible' boolean for the target device.\n"
+    "Always include a '{target_key}_isVisible' boolean indicating if that specific target device's screen is on and readable.\n"
     "For the camera view showing THREE OTP devices:\n"
     "- '{servo1}': The BOTTOM display (labeled '{servo1}').\n"
     "- '{servo2}': The CENTER display (labeled '{servo2}').\n"
@@ -26,8 +25,8 @@ DEFAULT_PROMPT_TEMPLATE = (
     "- '{servo5}': The TOP display (label of 'choi su hyun woori').\n\n"
     "Rules:\n"
     "- Only extract the 6-digit number visible on the device screen for '{target_key}'.\n"
-    "- If the '{target_key}' device is completely missing, or its screen is blank/off, return null.\n"
-    "- Output MUST strictly use this exact key: '{target_key}'."
+    "- If the '{target_key}' device is completely missing, or its screen is blank/off/unreadable, return null for its OTP and false for its visibility.\n"
+    "- Output MUST strictly use these exact keys: '{target_key}' and '{target_key}_isVisible'."
 )
 
 
@@ -41,6 +40,8 @@ def render_prompt(template: str, servo_names: dict, target_key: str) -> str:
 def _build_config(
     model: str, is_priority: bool, target_key: str, instructions: str
 ) -> types.GenerateContentConfig:
+    visibility_key = f"{target_key}_isVisible"
+    
     return types.GenerateContentConfig(
         system_instruction=instructions,
         temperature=0.0,
@@ -50,9 +51,9 @@ def _build_config(
             type=types.Type.OBJECT,
             properties={
                 target_key: types.Schema(type=types.Type.STRING, nullable=True),
-                "isVisible": types.Schema(type=types.Type.BOOLEAN),
+                visibility_key: types.Schema(type=types.Type.BOOLEAN),
             },
-            required=[target_key],
+            required=[target_key, visibility_key],
         ),
     )
 
