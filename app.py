@@ -386,7 +386,9 @@ def fire_servo():
 
     if servo not in VALID_SERVOS or not (1 <= angle <= 180):
         return (
-            jsonify({"status": "error", "message": "Invalid servo or angle parameters"}),
+            jsonify(
+                {"status": "error", "message": "Invalid servo or angle parameters"}
+            ),
             400,
         )
 
@@ -471,7 +473,7 @@ def _build_servo_names() -> dict[str, str]:
 def _needs_visibility_retry(otp_data, target_key: str) -> bool:
     if not isinstance(otp_data, dict):
         return True
-    
+
     visibility_key = f"{target_key}_isVisible"
     if visibility_key not in otp_data or not otp_data[visibility_key]:
         return True
@@ -510,12 +512,15 @@ async def _capture_and_extract_otp(token):
 
 async def _send_capture_prompt(event, token, image_path):
     caption = (
-        f"OTP extraction needs review for {token['key']}. Please check the attached capture."
+        f"OTP extraction failed. There may be an issue with {token['key']}.\n"
+        f" If you get this message, just request the OTP again. It means the camera didn't capture the OTP device properly."
     )
     try:
         await tg_client.send_message(event.chat_id, caption, reply_to=event.id)
     except Exception:
-        logging.exception("Failed to send Telegram capture prompt for token %s", token["key"])
+        logging.exception(
+            "Failed to send Telegram capture prompt for token %s", token["key"]
+        )
 
 
 # ── telegram ───────────────────────────────────────────────────────────────────
