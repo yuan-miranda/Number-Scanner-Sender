@@ -16,10 +16,14 @@ function otpPanel() {
         tokens: [],
         angles: {},
         reTriggers: {},
+        overlayRects: {},
         cameras: { left: 0, right: 1 },
         captureDelay: 1000,
         camOpen: { left: true, right: true },
         camSrc: { left: '', right: '' },
+        overlayEditing: { left: false, right: false },
+        overlayTarget: { left: '1', right: '4' },
+        overlayDraft: null,
         latestSrc: '/captures/latest.jpg',
         captureMissing: false,
         capturePolling: true,
@@ -104,6 +108,7 @@ function otpPanel() {
 
             this.angles = { ...data.angles };
             this.reTriggers = { ...(data.re_trigger || {}) };
+            this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
             this.cameras = { ...data.cameras };
             this.servoCount = data.servo_count ?? Object.keys(data.angles).length;
@@ -208,6 +213,126 @@ function otpPanel() {
         onReTriggerChange(e, id) {
             this.reTriggers[id] = e.target.checked;
             this.post('/set_re_trigger', { servo: id, re_trigger: e.target.checked });
+        },
+
+        // ── crop overlay ───────────────────────────────────────────
+        overlayRectText(id) {
+            const rect = this.overlayRects[id];
+            if (!rect) return '';
+            return `${Number(rect.x).toFixed(0)},${Number(rect.y).toFixed(0)},${Number(rect.width).toFixed(0)},${Number(rect.height).toFixed(0)}`;
+        },
+
+        parseOverlayRect(value) {
+            const text = String(value || '').trim();
+            if (!text) return null;
+            const parts = text.split(',').map(p => p.trim()).filter(Boolean);
+            if (parts.length !== 4) return null;
+            const nums = parts.map(p => Number(p.replace('%', '')));
+            if (nums.some(n => !Number.isFinite(n) || n < 0 || n > 100)) return null;
+            return { x: nums[0], y: nums[1], width: nums[2], height: nums[3] };
+        },
+
+        overlayOptionsForSide(side) {
+            const ids = side === 'left' ? [1, 2, 3] : [4, 5];
+            return this.tokens.filter(token => ids.includes(token.id));
+        },
+
+        overlayLabel(token) {
+            return token.displayName || `Servo ${token.id}`;
+        },
+
+        overlayBoxesForSide(side) {
+            const ids = side === 'left' ? [1, 2, 3] : [4, 5];
+            return this.tokens
+                .filter(token => ids.includes(token.id))
+                .map(token => {
+                    const rect = this.overlayRects[token.id];
+                    if (!rect) return null;
+                    return { id: token.id, label: this.overlayLabel(token), rect };
+                })
+                .filter(Boolean);
+        },
+
+        overlayRectStyle(rect) {
+            return {
+                left: `${rect.x}%`,
+                top: `${rect.y}%`,
+                width: `${rect.width}%`,
+                height: `${rect.height}%`
+            };
+        },
+
+        async saveOverlayRect(el, token) {
+            const input = el.closest('.servo-controls').querySelector('input.rect-input');
+            const value = input.value.trim();
+            if (!value) {
+                delete this.overlayRects[token.id];
+                await this.post('/set_overlay_rect', { servo: token.id, rect: null });
+                input.value = '';
+                return true;
+            }
+            const rect = this.parseOverlayRect(value);
+            if (!rect) {
+                input.classList.add('invalid');
+                alert('Use four values like 10,10,30,30 (percentages)');
+                return false;
+            }
+            input.classList.remove('invalid');
+            this.overlayRects[token.id] = rect;
+            const res = await this.post('/set_overlay_rect', { servo: token.id, rect });
+            if (res.ok) {
+                input.value = this.overlayRectText(token.id);
+                return true;
+            }
+            return false;
+        },
+
+        toggleOverlayEditor(side) {
+            this.overlayEditing[side] = !this.overlayEditing[side];
+            if (!this.overlayEditing[side]) this.overlayDraft = null;
+        },
+
+        async resetOverlayRect(side) {
+            const servoId = String(this.overlayTarget[side]);
+            delete this.overlayRects[servoId];
+            await this.post('/set_overlay_rect', { servo: servoId, rect: null });
+        },
+
+        onOverlayMouseDown(e, side) {
+            if (!this.overlayEditing[side] || e.button !== 0) return;
+            const box = e.currentTarget;
+            const bounds = box.getBoundingClientRect();
+            const x = ((e.clientX - bounds.left) / bounds.width) * 100;
+            const y = ((e.clientY - bounds.top) / bounds.height) * 100;
+            this.overlayDraft = { side, start: { x, y }, rect: { x, y, width: 0, height: 0 } };
+            e.preventDefault();
+        },
+
+        onOverlayMouseMove(e, side) {
+            if (!this.overlayEditing[side] || !this.overlayDraft || this.overlayDraft.side !== side) return;
+            const box = e.currentTarget;
+            const bounds = box.getBoundingClientRect();
+            const x = ((e.clientX - bounds.left) / bounds.width) * 100;
+            const y = ((e.clientY - bounds.top) / bounds.height) * 100;
+            const start = this.overlayDraft.start;
+            const left = Math.min(start.x, x);
+            const top = Math.min(start.y, y);
+            const width = Math.max(2, Math.abs(x - start.x));
+            const height = Math.max(2, Math.abs(y - start.y));
+            this.overlayDraft.rect = { x: left, y: top, width, height };
+            e.preventDefault();
+        },
+
+        async onOverlayMouseUp(e, side) {
+            if (!this.overlayEditing[side] || !this.overlayDraft || this.overlayDraft.side !== side) return;
+            const rect = this.overlayDraft.rect;
+            if (rect.width >= 2 && rect.height >= 2) {
+                const servoId = String(this.overlayTarget[side]);
+                this.overlayRects[servoId] = rect;
+                await this.post('/set_overlay_rect', { servo: servoId, rect });
+            }
+            this.overlayDraft = null;
+            e.preventDefault();
         },
 
         // ── camera ─────────────────────────────────────────────────

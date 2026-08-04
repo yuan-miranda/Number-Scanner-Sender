@@ -28,12 +28,12 @@
                 <div>
                     <template x-for="token in tokens" :key="token.id">
                         <details class="servo-details" name="servo-accordion" @toggle="onAccordionToggle($event)"
-                            x-data="{ dirtyName: false, dirtyAliases: false }">
+                            x-data="{ dirtyName: false, dirtyAliases: false, dirtyRect: false }">
 
                             <summary class="servo-summary">
                                 <div style="display: flex; align-items: center;">
                                     <span x-text="servoLabel(token)"></span>
-                                    <span class="unsaved" x-show="dirtyName || dirtyAliases"
+                                    <span class="unsaved" x-show="dirtyName || dirtyAliases || dirtyRect"
                                         style="display: none; margin-left: 8px;">*</span>
                                 </div>
                                 <svg class="chevron accordion-chevron" viewBox="0 0 24 24" width="16" height="16"
@@ -72,6 +72,17 @@
                                             @input="dirtyAliases = $el.value.trim() !== (token.aliasString || ''); onAliasInput($event)">
                                         <button class="btn-set" :class="{'btn-dirty': dirtyAliases}"
                                             @click="if(saveAliases($el, token)) dirtyAliases = false">Set</button>
+                                    </div>
+                                </div>
+
+                                <div class="servo-field">
+                                    <div class="field-label">Crop Rect (x%, y%, w%, h%)</div>
+                                    <div class="servo-controls">
+                                        <input type="text" class="meta-input rect-input"
+                                            placeholder="10, 10, 30, 30" :value="overlayRectText(token.id)"
+                                            @input="dirtyRect = $el.value.trim() !== (overlayRectText(token.id) || '')">
+                                        <button class="btn-set" :class="{'btn-dirty': dirtyRect}"
+                                            @click="if(saveOverlayRect($el, token)) dirtyRect = false">Set</button>
                                     </div>
                                 </div>
 
@@ -145,22 +156,58 @@
                 <div class="stream-box">
                     <div class="stream-header">
                         <span x-text="camLabel('left')"></span>
-                        <button class="stream-btn" :class="{ closed: !camOpen.left }"
-                            x-text="camOpen.left ? 'Close' : 'Open'" @click="toggleCamera('left')">
-                        </button>
+                        <div class="stream-header-actions">
+                            <select class="overlay-target-select" :value="overlayTarget.left" @change="overlayTarget.left = $event.target.value">
+                                <template x-for="token in overlayOptionsForSide('left')" :key="token.id">
+                                    <option :value="token.id" x-text="overlayLabel(token)"></option>
+                                </template>
+                            </select>
+                            <button class="stream-btn" @click="resetOverlayRect('left')" title="Clear crop rect for this device">✕</button>
+                            <button class="stream-btn" @click="toggleOverlayEditor('left')"
+                                x-text="overlayEditing.left ? 'Done' : 'Draw'">
+                            </button>
+                            <button class="stream-btn" :class="{ closed: !camOpen.left }"
+                                x-text="camOpen.left ? 'Close' : 'Open'" @click="toggleCamera('left')">
+                            </button>
+                        </div>
                     </div>
                     <img :src="camSrc.left" @error="setCamClosed('left')" x-show="camOpen.left">
+                    <div class="overlay-layer" :class="{ editable: overlayEditing.left }" x-show="camOpen.left"
+                        @mousedown="onOverlayMouseDown($event, 'left')" @mousemove="onOverlayMouseMove($event, 'left')" @mouseup="onOverlayMouseUp($event, 'left')">
+                        <template x-for="item in overlayBoxesForSide('left')" :key="item.id">
+                            <div class="overlay-rect" :class="`overlay-servo-${item.id}`" :style="overlayRectStyle(item.rect)" :title="item.label"></div>
+                        </template>
+                        <div class="overlay-rect overlay-rect-draft" :class="`overlay-servo-${overlayTarget.left}`" x-show="overlayDraft && overlayDraft.side === 'left'" :style="overlayRectStyle(overlayDraft.rect)"></div>
+                    </div>
                     <div class="cam-offline-overlay" :class="{ visible: !camOpen.left }">Camera offline</div>
                 </div>
 
                 <div class="stream-box">
                     <div class="stream-header">
                         <span x-text="camLabel('right')"></span>
-                        <button class="stream-btn" :class="{ closed: !camOpen.right }"
-                            x-text="camOpen.right ? 'Close' : 'Open'" @click="toggleCamera('right')">
-                        </button>
+                        <div class="stream-header-actions">
+                            <select class="overlay-target-select" :value="overlayTarget.right" @change="overlayTarget.right = $event.target.value">
+                                <template x-for="token in overlayOptionsForSide('right')" :key="token.id">
+                                    <option :value="token.id" x-text="overlayLabel(token)"></option>
+                                </template>
+                            </select>
+                            <button class="stream-btn" @click="resetOverlayRect('right')" title="Clear crop rect for this device">✕</button>
+                            <button class="stream-btn" @click="toggleOverlayEditor('right')"
+                                x-text="overlayEditing.right ? 'Done' : 'Draw'">
+                            </button>
+                            <button class="stream-btn" :class="{ closed: !camOpen.right }"
+                                x-text="camOpen.right ? 'Close' : 'Open'" @click="toggleCamera('right')">
+                            </button>
+                        </div>
                     </div>
                     <img :src="camSrc.right" @error="setCamClosed('right')" x-show="camOpen.right">
+                    <div class="overlay-layer" :class="{ editable: overlayEditing.right }" x-show="camOpen.right"
+                        @mousedown="onOverlayMouseDown($event, 'right')" @mousemove="onOverlayMouseMove($event, 'right')" @mouseup="onOverlayMouseUp($event, 'right')">
+                        <template x-for="item in overlayBoxesForSide('right')" :key="item.id">
+                            <div class="overlay-rect" :class="`overlay-servo-${item.id}`" :style="overlayRectStyle(item.rect)" :title="item.label"></div>
+                        </template>
+                        <div class="overlay-rect overlay-rect-draft" :class="`overlay-servo-${overlayTarget.right}`" x-show="overlayDraft && overlayDraft.side === 'right'" :style="overlayRectStyle(overlayDraft.rect)"></div>
+                    </div>
                     <div class="cam-offline-overlay" :class="{ visible: !camOpen.right }">Camera offline</div>
                 </div>
 

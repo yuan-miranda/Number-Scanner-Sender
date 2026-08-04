@@ -45,6 +45,7 @@ DEFAULT_CONFIG = {
     "angles": {},
     "re_trigger": {},
     "servo_meta": {},
+    "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
     "prompt_template": "",
@@ -90,6 +91,46 @@ def ensure_servo_slots(config_dict, servo_ids: list[str]):
         config_dict["angles"].setdefault(sid, 180)
         config_dict["re_trigger"].setdefault(sid, False)
         config_dict["servo_meta"].setdefault(sid, {"name": "", "aliases": []})
+    config_dict.setdefault("overlay_rects", {})
+
+
+def normalize_overlay_rect(raw_rect):
+    if not isinstance(raw_rect, dict):
+        return None
+    try:
+        x = float(raw_rect.get("x", 0))
+        y = float(raw_rect.get("y", 0))
+        width = float(raw_rect.get("width", 0))
+        height = float(raw_rect.get("height", 0))
+    except (TypeError, ValueError):
+        return None
+
+    if not (0 <= x <= 100 and 0 <= y <= 100 and 1 <= width <= 100 and 1 <= height <= 100):
+        return None
+
+    return {"x": round(x, 2), "y": round(y, 2), "width": round(width, 2), "height": round(height, 2)}
+
+
+def build_overlay_rects(config_dict, servo_count: int) -> dict[str, dict]:
+    lookup: dict[str, dict] = {}
+    overlay_rects = config_dict.get("overlay_rects", {}) or {}
+    servo_meta = config_dict.get("servo_meta", {}) or {}
+    for sid in range(1, servo_count + 1):
+        servo_key = str(sid)
+        rect = normalize_overlay_rect(overlay_rects.get(servo_key))
+        if rect is None:
+            rect = {"x": 0, "y": 0, "width": 100, "height": 100}
+        meta = servo_meta.get(servo_key, {}) or {}
+        name = str(meta.get("name", "") or "").strip()
+        aliases = [str(a).strip() for a in meta.get("aliases", []) if str(a).strip()]
+        labels = []
+        if name:
+            labels.append(name)
+        labels.extend(aliases)
+        labels.append(f"servo{sid}")
+        for label in labels:
+            lookup[re.sub(r"[^a-z0-9]", "", label.lower())] = rect
+    return lookup
 
 
 app_config = load_config()
@@ -294,6 +335,29 @@ def set_capture_delay():
     return jsonify({"status": "ok"})
 
 
+@app.route("/set_overlay_rect", methods=["POST"])
+def set_overlay_rect():
+    data = request.get_json()
+    servo = str(data.get("servo"))
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+
+    raw_rect = data.get("rect")
+    if raw_rect in (None, ""):
+        app_config.setdefault("overlay_rects", {}).pop(servo, None)
+        save_config(app_config)
+        return jsonify({"status": "ok"})
+
+    rect = normalize_overlay_rect(raw_rect)
+    if rect is None:
+        return jsonify({"status": "error", "message": "Use x%, y%, w%, h% values"}), 400
+
+    app_config.setdefault("overlay_rects", {})[servo] = rect
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/get_prompt")
 def get_prompt():
     template = app_config.get("prompt_template", "") or ""
@@ -480,6 +544,26 @@ def _needs_visibility_retry(otp_data, target_key: str) -> bool:
     return False
 
 
+def _apply_overlay_rect(frame, rect):
+    if frame is None or not isinstance(rect, dict):
+        return frame
+
+    height, width = frame.shape[:2]
+    try:
+        x = int(round(width * (rect.get("x", 0) / 100.0)))
+        y = int(round(height * (rect.get("y", 0) / 100.0)))
+        rect_width = int(round(width * (rect.get("width", 0) / 100.0)))
+        rect_height = int(round(height * (rect.get("height", 0) / 100.0)))
+    except (TypeError, ValueError):
+        return frame
+
+    x = max(0, min(width, x))
+    y = max(0, min(height, y))
+    rect_width = max(1, min(width - x, rect_width))
+    rect_height = max(1, min(height - y, rect_height))
+    return frame[y : y + rect_height, x : x + rect_width]
+
+
 async def _capture_and_extract_otp(token):
     await trigger_servo(token["servo"])
 
@@ -488,6 +572,17 @@ async def _capture_and_extract_otp(token):
 
     camera_index = int(app_config["cameras"][token["camera"]])
     frame = cam_manager.get_frame(camera_index)
+
+    overlay_lookup = build_overlay_rects(app_config, _servo_count)
+    rect = None
+    if token.get("key"):
+        rect = overlay_lookup.get(token["key"])
+    if rect is None:
+        rect = normalize_overlay_rect(
+            app_config.get("overlay_rects", {}).get(str(token["servo"]))
+        )
+    if rect is not None and frame is not None:
+        frame = _apply_overlay_rect(frame, rect)
 
     os.makedirs("captures", exist_ok=True)
     image_path = "captures/latest.jpg"
