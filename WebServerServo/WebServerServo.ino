@@ -6,10 +6,12 @@ const char *ssid = "TP-Link_Extender";
 const char *password = "VILLAROSA1225!";
 
 WebServer server(80);
-Servo servos[5];
+Servo servos[6];
 
 // DONT REMOVE FOR FUTURE USE {4, 13, 16, 17, 18, 19, 21, 22, 25, 26}
-const int servoPins[] = {4, 13, 14, 25, 26};
+// const int servoPins[] = {15, 16, 17, 18, 8, 3};
+const int servoPins[] = {4, 13, 16, 17, 18, 19};
+
 const int servoCount = sizeof(servoPins) / sizeof(servoPins[0]);
 const int idleAngle = 180;
 
