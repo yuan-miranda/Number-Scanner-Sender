@@ -44,6 +44,7 @@ CONFIG_FILE = "config.json"
 DEFAULT_CONFIG = {
     "angles": {},
     "re_trigger": {},
+    "invert": {},
     "servo_meta": {},
     "servo_sides": {},
     "servo_ids": None,
@@ -98,6 +99,7 @@ def ensure_servo_slots(config_dict, servo_ids: list[str]):
     for sid in servo_ids:
         config_dict["angles"].setdefault(sid, 180)
         config_dict["re_trigger"].setdefault(sid, False)
+        config_dict.setdefault("invert", {}).setdefault(sid, False)
         config_dict["servo_meta"].setdefault(sid, {"name": "", "aliases": []})
         config_dict.setdefault("servo_sides", {}).setdefault(sid, default_side(sid))
     config_dict.setdefault("overlay_rects", {})
@@ -324,6 +326,20 @@ def set_re_trigger():
     return jsonify({"status": "ok"})
 
 
+@app.route("/set_invert", methods=["POST"])
+def set_invert():
+    data = request.get_json()
+    servo = str(data.get("servo"))
+    invert = bool(data.get("invert", False))
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+
+    app_config.setdefault("invert", {})[servo] = invert
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
 @app.route("/set_servo_meta", methods=["POST"])
 def set_servo_meta():
     data = request.get_json()
@@ -414,8 +430,15 @@ def remove_servo():
     # up one (its name, aliases, angle, side, crop rect and re-trigger go with it).
     remaining = [s for s in active_servo_ids() if s != servo]
     mapping = {old: str(i + 1) for i, old in enumerate(remaining)}
-    for key in ("angles", "re_trigger", "servo_meta", "servo_sides", "overlay_rects"):
-        section = app_config.get(key, {})
+    for key in (
+        "angles",
+        "re_trigger",
+        "invert",
+        "servo_meta",
+        "servo_sides",
+        "overlay_rects",
+    ):
+        section = app_config.setdefault(key, {})
         shifted = {mapping[old]: section[old] for old in remaining if old in section}
         section.clear()
         section.update(shifted)
@@ -691,6 +714,11 @@ async def _capture_and_extract_otp(token):
         )
     if rect is not None and frame is not None:
         frame = _apply_overlay_rect(frame, rect)
+
+    if frame is not None and app_config.get("invert", {}).get(
+        str(token["servo"]), False
+    ):
+        frame = cv2.bitwise_not(frame)
 
     os.makedirs("captures", exist_ok=True)
     image_path = "captures/latest.jpg"

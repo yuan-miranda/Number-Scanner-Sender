@@ -21,6 +21,7 @@ function otpPanel() {
         newOtpSide: 'right',
         angles: {},
         reTriggers: {},
+        inverts: {},
         overlayRects: {},
         cameras: { left: 0, right: 1 },
         captureDelay: 1000,
@@ -113,6 +114,7 @@ function otpPanel() {
 
             this.angles = { ...data.angles };
             this.reTriggers = { ...(data.re_trigger || {}) };
+            this.inverts = { ...(data.invert || {}) };
             this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
             this.cameras = { ...data.cameras };
@@ -189,6 +191,7 @@ function otpPanel() {
             this.sides[id] = side;
             this.angles[id] = 180;
             this.reTriggers[id] = false;
+            this.inverts[id] = false;
             this.tokens.push({ id, displayName: '', aliasString: '' });
             this.tokens.sort((a, b) => a.id - b.id);
             this.servoCount = this.tokens.length;
@@ -215,6 +218,7 @@ function otpPanel() {
 
             this.angles = { ...cfg.angles };
             this.reTriggers = { ...(cfg.re_trigger || {}) };
+            this.inverts = { ...(cfg.invert || {}) };
             this.overlayRects = { ...(cfg.overlay_rects || {}) };
             const meta = cfg.servo_meta || {};
             const savedSides = cfg.servo_sides || {};
@@ -326,6 +330,12 @@ function otpPanel() {
         onReTriggerChange(e, id) {
             this.reTriggers[id] = e.target.checked;
             this.post('/set_re_trigger', { servo: id, re_trigger: e.target.checked });
+        },
+
+        // ── invert colors ──────────────────────────────────────────
+        onInvertChange(e, id) {
+            this.inverts[id] = e.target.checked;
+            this.post('/set_invert', { servo: id, invert: e.target.checked });
         },
 
         // ── crop overlay ───────────────────────────────────────────

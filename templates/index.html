@@ -103,6 +103,12 @@
                                     Re-trigger after capture
                                 </label>
 
+                                <label class="toggle-row">
+                                    <input type="checkbox" :checked="inverts[token.id]"
+                                        @change="onInvertChange($event, token.id)">
+                                    Invert colors (clearer OTP digits)
+                                </label>
+
                                 <div class="servo-field" style="margin-top: 6px;">
                                     <button class="btn-delete" @click="removeOtp(token)">Delete OTP</button>
                                 </div>
