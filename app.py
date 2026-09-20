@@ -51,6 +51,7 @@ DEFAULT_CONFIG = {
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
+    "camera_resolution": None,
     "prompt_template": "",
     "models_config": [
         {"model": "gemini-3.1-flash-lite", "priority": True},
@@ -116,17 +117,10 @@ def normalize_overlay_rect(raw_rect):
     except (TypeError, ValueError):
         return None
 
-    if not (
-        0 <= x <= 100 and 0 <= y <= 100 and 1 <= width <= 100 and 1 <= height <= 100
-    ):
+    if not (0 <= x <= 100 and 0 <= y <= 100 and 1 <= width <= 100 and 1 <= height <= 100):
         return None
 
-    return {
-        "x": round(x, 2),
-        "y": round(y, 2),
-        "width": round(width, 2),
-        "height": round(height, 2),
-    }
+    return {"x": round(x, 2), "y": round(y, 2), "width": round(width, 2), "height": round(height, 2)}
 
 
 def build_overlay_rects(config_dict, servo_ids) -> dict[str, dict]:
@@ -199,6 +193,20 @@ save_config(app_config)
 # ── camera manager ─────────────────────────────────────────────────────────────
 
 
+def _configure_capture(cap):
+    """Apply the saved resolution (None = leave the camera at its default).
+    MJPG is requested too: many USB webcams only offer 720p/1080p in MJPG."""
+    res = app_config.get("camera_resolution")
+    if not res:
+        return
+    try:
+        cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(res["width"]))
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res["height"]))
+    except Exception:
+        logging.exception("Could not apply camera resolution %s", res)
+
+
 class CameraManager:
     def __init__(self):
         self.cameras = {}
@@ -218,6 +226,7 @@ class CameraManager:
                 del self.cameras[cam_id]
             cap = cv2.VideoCapture(cam_id)
             if cap.isOpened():
+                _configure_capture(cap)
                 self.cameras[cam_id] = cap
                 return True
             cap.release()
@@ -237,8 +246,17 @@ class CameraManager:
             if cam_id not in self.cameras:
                 cap = cv2.VideoCapture(cam_id)
                 if cap.isOpened():
+                    _configure_capture(cap)
                     self.cameras[cam_id] = cap
         return self.latest_frames.get(cam_id)
+
+    def reconfigure_all(self):
+        """Reopen every open camera so a new resolution takes effect."""
+        with self.lock:
+            cam_ids = list(self.cameras.keys())
+        for cam_id in cam_ids:
+            self.release_camera(cam_id)
+            self.open_camera(cam_id)
 
     def is_open(self, cam_id):
         cam_id = int(cam_id)
@@ -353,15 +371,7 @@ def capture_servo():
     )
     image_path = _capture_processed_frame(token) if token else None
     if image_path is None:
-        return (
-            jsonify(
-                {
-                    "status": "error",
-                    "message": "No camera frame available (is the camera open?)",
-                }
-            ),
-            503,
-        )
+        return jsonify({"status": "error", "message": "No camera frame available (is the camera open?)"}), 503
     return jsonify({"status": "ok"})
 
 
@@ -399,10 +409,7 @@ def set_servo_side():
     if servo not in VALID_SERVOS:
         return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
     if side not in VALID_SIDES:
-        return (
-            jsonify({"status": "error", "message": "Side must be left or right"}),
-            400,
-        )
+        return jsonify({"status": "error", "message": "Side must be left or right"}), 400
 
     app_config.setdefault("servo_sides", {})[servo] = side
     save_config(app_config)
@@ -414,21 +421,13 @@ def add_servo():
     data = request.get_json(silent=True) or {}
     side = str(data.get("side", "right"))
     if side not in VALID_SIDES:
-        return (
-            jsonify({"status": "error", "message": "Side must be left or right"}),
-            400,
-        )
+        return jsonify({"status": "error", "message": "Side must be left or right"}), 400
 
     # take the lowest free number, so a deleted servo can be brought back
     used = {int(s) for s in VALID_SERVOS}
     new_id = next((i for i in range(1, MAX_SERVOS + 1) if i not in used), None)
     if new_id is None:
-        return (
-            jsonify(
-                {"status": "error", "message": f"Maximum of {MAX_SERVOS} OTPs reached"}
-            ),
-            400,
-        )
+        return jsonify({"status": "error", "message": f"Maximum of {MAX_SERVOS} OTPs reached"}), 400
 
     ids = active_servo_ids() + [str(new_id)]
     apply_servo_ids(ids)
@@ -446,23 +445,13 @@ def remove_servo():
     if servo not in VALID_SERVOS:
         return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
     if len(VALID_SERVOS) <= 1:
-        return (
-            jsonify({"status": "error", "message": "At least one OTP is required"}),
-            400,
-        )
+        return jsonify({"status": "error", "message": "At least one OTP is required"}), 400
 
     # Renumber so the list stays 1..N: everything after the deleted servo moves
     # up one (its name, aliases, angle, side, crop rect and re-trigger go with it).
     remaining = [s for s in active_servo_ids() if s != servo]
     mapping = {old: str(i + 1) for i, old in enumerate(remaining)}
-    for key in (
-        "angles",
-        "re_trigger",
-        "invert",
-        "servo_meta",
-        "servo_sides",
-        "overlay_rects",
-    ):
+    for key in ("angles", "re_trigger", "invert", "servo_meta", "servo_sides", "overlay_rects"):
         section = app_config.setdefault(key, {})
         shifted = {mapping[old]: section[old] for old in remaining if old in section}
         section.clear()
@@ -569,6 +558,30 @@ def set_models_config():
     return jsonify({"status": "ok"})
 
 
+RESOLUTIONS = {
+    "default": None,
+    "640x480": (640, 480),
+    "1280x720": (1280, 720),
+    "1920x1080": (1920, 1080),
+}
+
+
+@app.route("/set_resolution", methods=["POST"])
+def set_resolution():
+    data = request.get_json(silent=True) or {}
+    key = str(data.get("resolution", "default"))
+    if key not in RESOLUTIONS:
+        return jsonify({"status": "error", "message": "Unknown resolution"}), 400
+
+    size = RESOLUTIONS[key]
+    app_config["camera_resolution"] = (
+        {"width": size[0], "height": size[1]} if size else None
+    )
+    save_config(app_config)
+    cam_manager.reconfigure_all()
+    return jsonify({"status": "ok"})
+
+
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
@@ -657,7 +670,6 @@ def video_feed(camera_id):
 
 # ── token matching ─────────────────────────────────────────────────────────────
 
-
 def _build_token_lookup():
     lookup: dict[str, dict] = {}
     for sid in sorted(VALID_SERVOS, key=int):
@@ -737,9 +749,7 @@ def _capture_processed_frame(token):
     if rect is not None and frame is not None:
         frame = _apply_overlay_rect(frame, rect)
 
-    if frame is not None and app_config.get("invert", {}).get(
-        str(token["servo"]), False
-    ):
+    if frame is not None and app_config.get("invert", {}).get(str(token["servo"]), False):
         frame = cv2.bitwise_not(frame)
 
     os.makedirs("captures", exist_ok=True)

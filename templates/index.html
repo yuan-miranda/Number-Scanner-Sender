@@ -164,6 +164,18 @@
                 </div>
             </div>
 
+            <div class="servo-field">
+                <div class="field-label">Camera Resolution</div>
+                <div class="servo-controls">
+                    <select class="meta-input" x-model="resolution" @change="saveResolution($event.target.value)">
+                        <option value="default">Camera default</option>
+                        <option value="640x480">640 x 480</option>
+                        <option value="1280x720">1280 x 720</option>
+                        <option value="1920x1080">1920 x 1080</option>
+                    </select>
+                </div>
+            </div>
+
             <hr class="section-divider">
 
             <div class="servo-details prompt-menu-container" style="margin-bottom: 0;" :class="{'is-open': promptOpen}">
@@ -271,13 +283,14 @@
 
                 <div class="stream-box">
                     <div class="stream-header">
-                        <span>Latest Capture</span>
+                        <span>Latest Capture <span x-show="captureSize" x-text="captureSize"
+                                style="display: none; margin-left: 6px; font-weight: 400; opacity: .7;"></span></span>
                         <button class="stream-btn" @click="reloadCapture()">↻ Reload</button>
                     </div>
                     <div class="stream-media">
                         <img :src="latestSrc" :style="captureMissing ? 'visibility:hidden' : ''"
                             @error="captureMissing = true; capturePolling = false"
-                            @load="captureMissing = false; capturePolling = true">
+                            @load="captureMissing = false; capturePolling = true; captureSize = $el.naturalWidth + ' x ' + $el.naturalHeight + ' px'">
                         <div class="cam-offline-overlay" :class="{ visible: captureMissing }">No capture</div>
                     </div>
                 </div>

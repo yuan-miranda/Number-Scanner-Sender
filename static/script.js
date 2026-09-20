@@ -25,6 +25,8 @@ function otpPanel() {
         overlayRects: {},
         cameras: { left: 0, right: 1 },
         captureDelay: 1000,
+        resolution: 'default',
+        captureSize: '',
         camOpen: { left: true, right: true },
         camSrc: { left: '', right: '' },
         overlayEditing: { left: false, right: false },
@@ -118,6 +120,8 @@ function otpPanel() {
             this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
             this.cameras = { ...data.cameras };
+            const cr = data.camera_resolution;
+            this.resolution = cr ? `${cr.width}x${cr.height}` : 'default';
             const ids = (Array.isArray(data.servo_ids) && data.servo_ids.length
                 ? data.servo_ids
                 : Array.from({ length: data.servo_count ?? Object.keys(data.angles).length }, (_, i) => i + 1)
@@ -542,6 +546,19 @@ function otpPanel() {
             input.classList.remove('invalid');
             this.captureDelay = v;
             this.post('/set_capture_delay', { delay_ms: v });
+        },
+
+        async saveResolution(value) {
+            this.resolution = value;
+            const res = await this.post('/set_resolution', { resolution: value });
+            if (!res.ok) {
+                alert('Failed to set resolution');
+                return;
+            }
+            // cameras were reopened on the server, so restart the live streams
+            this.SIDES.forEach(side => {
+                if (this.camOpen[side]) this.openCamera(side, this.cameras[side]);
+            });
         },
 
         reloadCapture() {
