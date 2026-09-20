@@ -17,6 +17,8 @@ function otpPanel() {
         configLoaded: false,
         servoCount: 0,
         tokens: [],
+        sides: {},
+        newOtpSide: 'right',
         angles: {},
         reTriggers: {},
         overlayRects: {},
@@ -125,6 +127,13 @@ function otpPanel() {
                 return { id, displayName: name, aliasString: aliases.join(', ') };
             });
 
+            const savedSides = data.servo_sides || {};
+            this.sides = {};
+            this.tokens.forEach(t => {
+                this.sides[t.id] = savedSides[String(t.id)] || (t.id <= 4 ? 'left' : 'right');
+            });
+            this.syncOverlayTargets();
+
             this.configLoaded = true;
             this.SIDES.forEach(side => this.openCamera(side, this.cameras[side]));
             await this.loadPrompt();
@@ -145,6 +154,63 @@ function otpPanel() {
 
         servoLabel(token) {
             return token.displayName || `Servo ${token.id}`;
+        },
+
+        // ── camera side / add OTP ──────────────────────────────────
+        sideOf(id) {
+            return this.sides[id] || (Number(id) <= 4 ? 'left' : 'right');
+        },
+
+        async saveSide(token, side) {
+            const prev = this.sides[token.id];
+            this.sides[token.id] = side;
+            const res = await this.post('/set_servo_side', { servo: token.id, side });
+            if (!res.ok) {
+                this.sides[token.id] = prev;
+                alert('Failed to save camera side');
+                return;
+            }
+            this.syncOverlayTargets();
+            this.refreshPromptIfClean();
+        },
+
+        async addOtp() {
+            const side = this.newOtpSide;
+            const res = await this.post('/add_servo', { side });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.message || 'Failed to add OTP');
+                return;
+            }
+            const id = data.servo;
+            this.servoCount = id;
+            this.sides[id] = side;
+            this.angles[id] = 180;
+            this.reTriggers[id] = false;
+            this.tokens.push({ id, displayName: '', aliasString: '' });
+            this.syncOverlayTargets();
+            this.refreshPromptIfClean();
+        },
+
+        // keep each camera's crop-target dropdown pointing at a servo on that side
+        syncOverlayTargets() {
+            this.SIDES.forEach(side => {
+                const opts = this.overlayOptionsForSide(side);
+                const valid = opts.some(t => String(t.id) === String(this.overlayTarget[side]));
+                if (!valid) this.overlayTarget[side] = opts.length ? String(opts[0].id) : '';
+            });
+        },
+
+        // the default prompt depends on sides/count; refresh it unless the user has unsaved edits
+        async refreshPromptIfClean() {
+            if (this.promptText === this.savedPromptText) {
+                await this.loadPrompt();
+                return;
+            }
+            try {
+                const data = await fetch('/get_prompt').then(r => r.json());
+                this.defaultPromptText = data.default_template || '';
+            } catch { }
         },
 
         // ── angle ──────────────────────────────────────────────────
@@ -236,8 +302,7 @@ function otpPanel() {
         },
 
         overlayOptionsForSide(side) {
-            const ids = side === 'left' ? [1, 2, 3] : [4, 5];
-            return this.tokens.filter(token => ids.includes(token.id));
+            return this.tokens.filter(token => this.sideOf(token.id) === side);
         },
 
         overlayLabel(token) {
@@ -245,9 +310,8 @@ function otpPanel() {
         },
 
         overlayBoxesForSide(side) {
-            const ids = side === 'left' ? [1, 2, 3] : [4, 5];
             return this.tokens
-                .filter(token => ids.includes(token.id))
+                .filter(token => this.sideOf(token.id) === side)
                 .map(token => {
                     const rect = this.overlayRects[token.id];
                     if (!rect) return null;

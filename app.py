@@ -45,6 +45,8 @@ DEFAULT_CONFIG = {
     "angles": {},
     "re_trigger": {},
     "servo_meta": {},
+    "servo_sides": {},
+    "servo_count": None,
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
@@ -56,6 +58,12 @@ DEFAULT_CONFIG = {
 }
 VALID_SIDES = {"left", "right"}
 VALID_SERVOS: set[str] = set()
+MAX_SERVOS = 16
+
+
+def default_side(sid) -> str:
+    """Initial camera side for a servo that has none saved: 1-4 left, 5+ right."""
+    return "left" if int(sid) <= 4 else "right"
 
 
 def _servo_ids(count: int) -> list[str]:
@@ -91,6 +99,7 @@ def ensure_servo_slots(config_dict, servo_ids: list[str]):
         config_dict["angles"].setdefault(sid, 180)
         config_dict["re_trigger"].setdefault(sid, False)
         config_dict["servo_meta"].setdefault(sid, {"name": "", "aliases": []})
+        config_dict.setdefault("servo_sides", {}).setdefault(sid, default_side(sid))
     config_dict.setdefault("overlay_rects", {})
 
 
@@ -105,10 +114,17 @@ def normalize_overlay_rect(raw_rect):
     except (TypeError, ValueError):
         return None
 
-    if not (0 <= x <= 100 and 0 <= y <= 100 and 1 <= width <= 100 and 1 <= height <= 100):
+    if not (
+        0 <= x <= 100 and 0 <= y <= 100 and 1 <= width <= 100 and 1 <= height <= 100
+    ):
         return None
 
-    return {"x": round(x, 2), "y": round(y, 2), "width": round(width, 2), "height": round(height, 2)}
+    return {
+        "x": round(x, 2),
+        "y": round(y, 2),
+        "width": round(width, 2),
+        "height": round(height, 2),
+    }
 
 
 def build_overlay_rects(config_dict, servo_count: int) -> dict[str, dict]:
@@ -139,21 +155,35 @@ app_config = load_config()
 # ── fetch servo count from ESP32 ───────────────────────────────────────────────
 
 
-def fetch_servo_count() -> int:
+def fetch_servo_count() -> int | None:
     try:
         with httpx.Client() as client:
             resp = client.get(f"http://{ESP32_IP}/servo_count", timeout=5.0)
             return int(resp.json()["count"])
     except Exception as exc:
-        logging.warning(
-            "Could not fetch servo count from ESP32 (%s); defaulting to 5", exc
-        )
-        return 5
+        logging.warning("Could not fetch servo count from ESP32 (%s)", exc)
+        return None
 
 
-_servo_count = fetch_servo_count()
-VALID_SERVOS = set(_servo_ids(_servo_count))
-ensure_servo_slots(app_config, _servo_ids(_servo_count))
+_servo_count = 0
+
+
+def apply_servo_count(count: int):
+    global _servo_count, VALID_SERVOS
+    _servo_count = count
+    VALID_SERVOS = set(_servo_ids(count))
+    ensure_servo_slots(app_config, _servo_ids(count))
+
+
+# The count saved from the UI ("Add OTP") wins if it is higher than what the
+# ESP32 reports, and it also survives the ESP32 being unreachable at startup.
+_esp_count = fetch_servo_count()
+_configured_count = int(app_config.get("servo_count") or 0)
+_start_count = max(_esp_count or 0, _configured_count)
+if _start_count == 0:
+    logging.warning("No servo count from ESP32 or config; defaulting to 5")
+    _start_count = 5
+apply_servo_count(_start_count)
 save_config(app_config)
 
 
@@ -309,6 +339,51 @@ def set_servo_meta():
 
     save_config(app_config)
     return jsonify({"status": "ok"})
+
+
+@app.route("/set_servo_side", methods=["POST"])
+def set_servo_side():
+    data = request.get_json() or {}
+    servo = str(data.get("servo"))
+    side = str(data.get("side"))
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+    if side not in VALID_SIDES:
+        return (
+            jsonify({"status": "error", "message": "Side must be left or right"}),
+            400,
+        )
+
+    app_config.setdefault("servo_sides", {})[servo] = side
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/add_servo", methods=["POST"])
+def add_servo():
+    data = request.get_json(silent=True) or {}
+    side = str(data.get("side", "right"))
+    if side not in VALID_SIDES:
+        return (
+            jsonify({"status": "error", "message": "Side must be left or right"}),
+            400,
+        )
+
+    new_id = _servo_count + 1
+    if new_id > MAX_SERVOS:
+        return (
+            jsonify(
+                {"status": "error", "message": f"Maximum of {MAX_SERVOS} OTPs reached"}
+            ),
+            400,
+        )
+
+    apply_servo_count(new_id)
+    app_config["servo_sides"][str(new_id)] = side
+    app_config["servo_count"] = new_id
+    save_config(app_config)
+    return jsonify({"status": "ok", "servo": new_id, "side": side})
 
 
 @app.route("/set_capture_delay", methods=["POST"])
@@ -493,14 +568,6 @@ def video_feed(camera_id):
 
 # ── token matching ─────────────────────────────────────────────────────────────
 
-SERVO_CAMERA_SIDE = {
-    "1": "left",
-    "2": "left",
-    "3": "left",
-    "4": "right",
-    "5": "right",
-}
-
 
 def _build_token_lookup():
     lookup: dict[str, dict] = {}
@@ -509,7 +576,7 @@ def _build_token_lookup():
         name = meta.get("name", "").strip()
         aliases = [a.strip().lower() for a in meta.get("aliases", []) if a.strip()]
         key = re.sub(r"[^a-z0-9]", "", name.lower()) if name else f"servo{sid}"
-        camera_side = SERVO_CAMERA_SIDE.get(sid, "left")
+        camera_side = app_config.get("servo_sides", {}).get(sid) or default_side(sid)
         token = {"key": key, "servo": int(sid), "camera": camera_side}
         for alias in [key] + aliases:
             clean = re.sub(r"[^a-z0-9]", "", alias)
