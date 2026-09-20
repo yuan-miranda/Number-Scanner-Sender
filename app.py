@@ -340,6 +340,31 @@ def set_invert():
     return jsonify({"status": "ok"})
 
 
+@app.route("/capture_servo", methods=["POST"])
+def capture_servo():
+    data = request.get_json(silent=True) or {}
+    servo = str(data.get("servo"))
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+
+    token = next(
+        (tok for tok in _build_token_lookup().values() if tok["servo"] == int(servo)),
+        None,
+    )
+    image_path = _capture_processed_frame(token) if token else None
+    if image_path is None:
+        return (
+            jsonify(
+                {
+                    "status": "error",
+                    "message": "No camera frame available (is the camera open?)",
+                }
+            ),
+            503,
+        )
+    return jsonify({"status": "ok"})
+
+
 @app.route("/set_servo_meta", methods=["POST"])
 def set_servo_meta():
     data = request.get_json()
@@ -695,12 +720,9 @@ def _apply_overlay_rect(frame, rect):
     return frame[y : y + rect_height, x : x + rect_width]
 
 
-async def _capture_and_extract_otp(token):
-    await trigger_servo(token["servo"])
-
-    capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
-    await asyncio.sleep(capture_delay_s)
-
+def _capture_processed_frame(token):
+    """Grab the current camera frame, apply this OTP's crop + invert, and save it
+    to captures/latest.jpg. Returns the path, or None if there is no frame."""
     camera_index = int(app_config["cameras"][token["camera"]])
     frame = cam_manager.get_frame(camera_index)
 
@@ -726,6 +748,16 @@ async def _capture_and_extract_otp(token):
         cv2.imwrite(image_path, frame)
     else:
         image_path = None
+    return image_path
+
+
+async def _capture_and_extract_otp(token):
+    await trigger_servo(token["servo"])
+
+    capture_delay_s = app_config.get("capture_delay_ms", 1000) / 1000.0
+    await asyncio.sleep(capture_delay_s)
+
+    image_path = _capture_processed_frame(token)
 
     otp_data = None
     if image_path:

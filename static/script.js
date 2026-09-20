@@ -338,6 +338,18 @@ function otpPanel() {
             this.post('/set_invert', { servo: id, invert: e.target.checked });
         },
 
+        // ── preview capture ────────────────────────────────────────
+        async captureServo(token) {
+            const res = await this.post('/capture_servo', { servo: token.id });
+            if (!res.ok) {
+                const data = await res.json().catch(() => ({}));
+                alert(data.message || 'Capture failed');
+                return;
+            }
+            this.captureMissing = false;
+            this.reloadCapture();
+        },
+
         // ── crop overlay ───────────────────────────────────────────
         overlayRectText(id) {
             const rect = this.overlayRects[id];
