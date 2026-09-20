@@ -103,6 +103,10 @@
                                     Re-trigger after capture
                                 </label>
 
+                                <div class="servo-field" style="margin-top: 6px;">
+                                    <button class="btn-delete" @click="removeOtp(token)">Delete OTP</button>
+                                </div>
+
                             </div>
                         </details>
                     </template>
@@ -286,7 +290,7 @@
                         </button>
                         <span class="prompt-hint" x-show="!promptConfigMode">
                             PLACEHOLDERS: <code title="Use this to indicate the name of the servo">{servo1}</code>-<code
-                                x-text="'{servo' + tokens.length + '}'"
+                                x-text="'{servo' + Math.max(...tokens.map(t => t.id)) + '}'"
                                 title="Use this to indicate the name of the servo"></code>, <code
                                 title="The keyword that the user asks for">{target_key}</code>.
                         </span>

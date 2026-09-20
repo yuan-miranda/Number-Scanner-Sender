@@ -46,7 +46,7 @@ DEFAULT_CONFIG = {
     "re_trigger": {},
     "servo_meta": {},
     "servo_sides": {},
-    "servo_count": None,
+    "servo_ids": None,
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
@@ -127,11 +127,11 @@ def normalize_overlay_rect(raw_rect):
     }
 
 
-def build_overlay_rects(config_dict, servo_count: int) -> dict[str, dict]:
+def build_overlay_rects(config_dict, servo_ids) -> dict[str, dict]:
     lookup: dict[str, dict] = {}
     overlay_rects = config_dict.get("overlay_rects", {}) or {}
     servo_meta = config_dict.get("servo_meta", {}) or {}
-    for sid in range(1, servo_count + 1):
+    for sid in servo_ids:
         servo_key = str(sid)
         rect = normalize_overlay_rect(overlay_rects.get(servo_key))
         if rect is None:
@@ -165,25 +165,32 @@ def fetch_servo_count() -> int | None:
         return None
 
 
-_servo_count = 0
+def apply_servo_ids(ids):
+    """Set the active servo ids (they need not be contiguous: deleting servo 2
+    leaves 1, 3, 4... so every other servo keeps its ESP32 channel)."""
+    global VALID_SERVOS
+    ids = sorted({str(i) for i in ids}, key=int)
+    VALID_SERVOS = set(ids)
+    ensure_servo_slots(app_config, ids)
 
 
-def apply_servo_count(count: int):
-    global _servo_count, VALID_SERVOS
-    _servo_count = count
-    VALID_SERVOS = set(_servo_ids(count))
-    ensure_servo_slots(app_config, _servo_ids(count))
+def active_servo_ids() -> list[str]:
+    return sorted(VALID_SERVOS, key=int)
 
 
-# The count saved from the UI ("Add OTP") wins if it is higher than what the
-# ESP32 reports, and it also survives the ESP32 being unreachable at startup.
-_esp_count = fetch_servo_count()
-_configured_count = int(app_config.get("servo_count") or 0)
-_start_count = max(_esp_count or 0, _configured_count)
-if _start_count == 0:
-    logging.warning("No servo count from ESP32 or config; defaulting to 5")
-    _start_count = 5
-apply_servo_count(_start_count)
+# Ids saved from the UI (Add/Delete OTP) are authoritative. Configs from the
+# previous version only have a servo_count, so those become ids 1..count.
+# With nothing saved yet, use what the ESP32 reports (else 5).
+_saved_ids = app_config.get("servo_ids")
+if _saved_ids:
+    _start_ids = [str(i) for i in _saved_ids]
+else:
+    _start_count = int(app_config.get("servo_count") or 0) or (fetch_servo_count() or 0)
+    if _start_count == 0:
+        logging.warning("No servo count from ESP32 or config; defaulting to 5")
+        _start_count = 5
+    _start_ids = _servo_ids(_start_count)
+apply_servo_ids(_start_ids)
 save_config(app_config)
 
 
@@ -273,13 +280,14 @@ def get_capture(filename):
 @app.route("/get_config")
 def get_config():
     payload = dict(app_config)
-    payload["servo_count"] = _servo_count
+    payload["servo_ids"] = [int(s) for s in active_servo_ids()]
+    payload["servo_count"] = len(VALID_SERVOS)
     return jsonify(payload)
 
 
 @app.route("/servo_count")
 def servo_count_route():
-    return jsonify({"count": _servo_count})
+    return jsonify({"count": len(VALID_SERVOS)})
 
 
 @app.route("/set_angle", methods=["POST"])
@@ -370,8 +378,10 @@ def add_servo():
             400,
         )
 
-    new_id = _servo_count + 1
-    if new_id > MAX_SERVOS:
+    # take the lowest free number, so a deleted servo can be brought back
+    used = {int(s) for s in VALID_SERVOS}
+    new_id = next((i for i in range(1, MAX_SERVOS + 1) if i not in used), None)
+    if new_id is None:
         return (
             jsonify(
                 {"status": "error", "message": f"Maximum of {MAX_SERVOS} OTPs reached"}
@@ -379,11 +389,42 @@ def add_servo():
             400,
         )
 
-    apply_servo_count(new_id)
+    ids = active_servo_ids() + [str(new_id)]
+    apply_servo_ids(ids)
     app_config["servo_sides"][str(new_id)] = side
-    app_config["servo_count"] = new_id
+    app_config["servo_ids"] = sorted(VALID_SERVOS, key=int)
     save_config(app_config)
     return jsonify({"status": "ok", "servo": new_id, "side": side})
+
+
+@app.route("/remove_servo", methods=["POST"])
+def remove_servo():
+    data = request.get_json(silent=True) or {}
+    servo = str(data.get("servo"))
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+    if len(VALID_SERVOS) <= 1:
+        return (
+            jsonify({"status": "error", "message": "At least one OTP is required"}),
+            400,
+        )
+
+    # Renumber so the list stays 1..N: everything after the deleted servo moves
+    # up one (its name, aliases, angle, side, crop rect and re-trigger go with it).
+    remaining = [s for s in active_servo_ids() if s != servo]
+    mapping = {old: str(i + 1) for i, old in enumerate(remaining)}
+    for key in ("angles", "re_trigger", "servo_meta", "servo_sides", "overlay_rects"):
+        section = app_config.get(key, {})
+        shifted = {mapping[old]: section[old] for old in remaining if old in section}
+        section.clear()
+        section.update(shifted)
+
+    new_ids = sorted(mapping.values(), key=int)
+    apply_servo_ids(new_ids)
+    app_config["servo_ids"] = new_ids
+    save_config(app_config)
+    return jsonify({"status": "ok", "servo_ids": [int(s) for s in new_ids]})
 
 
 @app.route("/set_capture_delay", methods=["POST"])
@@ -640,7 +681,7 @@ async def _capture_and_extract_otp(token):
     camera_index = int(app_config["cameras"][token["camera"]])
     frame = cam_manager.get_frame(camera_index)
 
-    overlay_lookup = build_overlay_rects(app_config, _servo_count)
+    overlay_lookup = build_overlay_rects(app_config, active_servo_ids())
     rect = None
     if token.get("key"):
         rect = overlay_lookup.get(token["key"])

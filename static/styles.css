@@ -468,6 +468,23 @@ button {
     border-color: var(--btn-hover-border);
 }
 
+.btn-delete {
+    width: 100%;
+    background: transparent;
+    color: #cc0000;
+    border-color: #cc0000;
+}
+
+.btn-delete:hover:not(:disabled) {
+    background: #cc0000;
+    color: #fff;
+}
+
+.btn-delete:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+}
+
 .btn-dirty {
     border-color: #d97706 !important;
     color: #d97706 !important;

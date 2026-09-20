@@ -116,11 +116,14 @@ function otpPanel() {
             this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
             this.cameras = { ...data.cameras };
-            this.servoCount = data.servo_count ?? Object.keys(data.angles).length;
+            const ids = (Array.isArray(data.servo_ids) && data.servo_ids.length
+                ? data.servo_ids
+                : Array.from({ length: data.servo_count ?? Object.keys(data.angles).length }, (_, i) => i + 1)
+            ).map(Number).sort((a, b) => a - b);
+            this.servoCount = ids.length;
 
             const meta = data.servo_meta || {};
-            this.tokens = Array.from({ length: this.servoCount }, (_, i) => {
-                const id = i + 1;
+            this.tokens = ids.map(id => {
                 const m = meta[String(id)] || {};
                 const name = (m.name || '').trim();
                 const aliases = Array.isArray(m.aliases) ? m.aliases : [];
@@ -183,11 +186,52 @@ function otpPanel() {
                 return;
             }
             const id = data.servo;
-            this.servoCount = id;
             this.sides[id] = side;
             this.angles[id] = 180;
             this.reTriggers[id] = false;
             this.tokens.push({ id, displayName: '', aliasString: '' });
+            this.tokens.sort((a, b) => a.id - b.id);
+            this.servoCount = this.tokens.length;
+            this.syncOverlayTargets();
+            this.refreshPromptIfClean();
+        },
+
+        // Deleting renumbers the rest (1..N), so reload the servo state from the server
+        async removeOtp(token) {
+            if (this.tokens.length <= 1) {
+                alert('At least one OTP is required');
+                return;
+            }
+            if (!confirm(`Delete ${this.servoLabel(token)} (servo ${token.id})? The OTPs after it will move up one number.`)) return;
+            const res = await this.post('/remove_servo', { servo: token.id });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok) {
+                alert(data.message || 'Failed to delete OTP');
+                return;
+            }
+
+            const cfg = await fetch('/get_config').then(r => r.json());
+            document.querySelectorAll('.servo-details').forEach(el => { el.open = false; });
+
+            this.angles = { ...cfg.angles };
+            this.reTriggers = { ...(cfg.re_trigger || {}) };
+            this.overlayRects = { ...(cfg.overlay_rects || {}) };
+            const meta = cfg.servo_meta || {};
+            const savedSides = cfg.servo_sides || {};
+            const ids = (cfg.servo_ids || []).map(Number).sort((a, b) => a - b);
+            const newTokens = ids.map(id => {
+                const m = meta[String(id)] || {};
+                const aliases = Array.isArray(m.aliases) ? m.aliases : [];
+                return { id, displayName: (m.name || '').trim(), aliasString: aliases.join(', ') };
+            });
+            this.sides = {};
+            ids.forEach(id => { this.sides[id] = savedSides[String(id)] || (id <= 4 ? 'left' : 'right'); });
+
+            // clear first so every menu re-renders fresh (resets any "unsaved" markers)
+            this.tokens = [];
+            await this.$nextTick();
+            this.tokens = newTokens;
+            this.servoCount = newTokens.length;
             this.syncOverlayTargets();
             this.refreshPromptIfClean();
         },
