@@ -45,13 +45,14 @@ DEFAULT_CONFIG = {
     "angles": {},
     "re_trigger": {},
     "invert": {},
+    "enhance": {},
     "servo_meta": {},
     "servo_sides": {},
     "servo_ids": None,
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
-    "camera_resolution": None,
+    "camera_resolution": {"width": 3840, "height": 2160},
     "prompt_template": "",
     "models_config": [
         {"model": "gemini-3.1-flash-lite", "priority": True},
@@ -101,6 +102,7 @@ def ensure_servo_slots(config_dict, servo_ids: list[str]):
         config_dict["angles"].setdefault(sid, 180)
         config_dict["re_trigger"].setdefault(sid, False)
         config_dict.setdefault("invert", {}).setdefault(sid, False)
+        config_dict.setdefault("enhance", {}).setdefault(sid, False)
         config_dict["servo_meta"].setdefault(sid, {"name": "", "aliases": []})
         config_dict.setdefault("servo_sides", {}).setdefault(sid, default_side(sid))
     config_dict.setdefault("overlay_rects", {})
@@ -193,9 +195,10 @@ save_config(app_config)
 # ── camera manager ─────────────────────────────────────────────────────────────
 
 
-def _configure_capture(cap):
-    """Apply the saved resolution (None = leave the camera at its default).
-    MJPG is requested too: many USB webcams only offer 720p/1080p in MJPG."""
+def _configure_capture(cap, cam_id=None):
+    """Ask the camera for the saved resolution (null in config.json = leave it alone).
+    MJPG is requested because USB webcams usually only offer 1080p/4K in MJPG.
+    If the camera can't do it, the driver falls back to the closest mode it has."""
     res = app_config.get("camera_resolution")
     if not res:
         return
@@ -203,6 +206,9 @@ def _configure_capture(cap):
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
         cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(res["width"]))
         cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res["height"]))
+        got_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        got_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        print(f"[camera {cam_id}] asked for {res['width']}x{res['height']}, camera reports {got_w}x{got_h}")
     except Exception:
         logging.exception("Could not apply camera resolution %s", res)
 
@@ -226,7 +232,7 @@ class CameraManager:
                 del self.cameras[cam_id]
             cap = cv2.VideoCapture(cam_id)
             if cap.isOpened():
-                _configure_capture(cap)
+                _configure_capture(cap, cam_id)
                 self.cameras[cam_id] = cap
                 return True
             cap.release()
@@ -246,17 +252,9 @@ class CameraManager:
             if cam_id not in self.cameras:
                 cap = cv2.VideoCapture(cam_id)
                 if cap.isOpened():
-                    _configure_capture(cap)
+                    _configure_capture(cap, cam_id)
                     self.cameras[cam_id] = cap
         return self.latest_frames.get(cam_id)
-
-    def reconfigure_all(self):
-        """Reopen every open camera so a new resolution takes effect."""
-        with self.lock:
-            cam_ids = list(self.cameras.keys())
-        for cam_id in cam_ids:
-            self.release_camera(cam_id)
-            self.open_camera(cam_id)
 
     def is_open(self, cam_id):
         cam_id = int(cam_id)
@@ -340,6 +338,20 @@ def set_re_trigger():
         return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
 
     app_config["re_trigger"][servo] = re_trigger
+    save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
+@app.route("/set_enhance", methods=["POST"])
+def set_enhance():
+    data = request.get_json()
+    servo = str(data.get("servo"))
+    enhance = bool(data.get("enhance", False))
+
+    if servo not in VALID_SERVOS:
+        return jsonify({"status": "error", "message": "Invalid servo ID"}), 400
+
+    app_config.setdefault("enhance", {})[servo] = enhance
     save_config(app_config)
     return jsonify({"status": "ok"})
 
@@ -451,7 +463,7 @@ def remove_servo():
     # up one (its name, aliases, angle, side, crop rect and re-trigger go with it).
     remaining = [s for s in active_servo_ids() if s != servo]
     mapping = {old: str(i + 1) for i, old in enumerate(remaining)}
-    for key in ("angles", "re_trigger", "invert", "servo_meta", "servo_sides", "overlay_rects"):
+    for key in ("angles", "re_trigger", "invert", "enhance", "servo_meta", "servo_sides", "overlay_rects"):
         section = app_config.setdefault(key, {})
         shifted = {mapping[old]: section[old] for old in remaining if old in section}
         section.clear()
@@ -558,30 +570,6 @@ def set_models_config():
     return jsonify({"status": "ok"})
 
 
-RESOLUTIONS = {
-    "default": None,
-    "640x480": (640, 480),
-    "1280x720": (1280, 720),
-    "1920x1080": (1920, 1080),
-}
-
-
-@app.route("/set_resolution", methods=["POST"])
-def set_resolution():
-    data = request.get_json(silent=True) or {}
-    key = str(data.get("resolution", "default"))
-    if key not in RESOLUTIONS:
-        return jsonify({"status": "error", "message": "Unknown resolution"}), 400
-
-    size = RESOLUTIONS[key]
-    app_config["camera_resolution"] = (
-        {"width": size[0], "height": size[1]} if size else None
-    )
-    save_config(app_config)
-    cam_manager.reconfigure_all()
-    return jsonify({"status": "ok"})
-
-
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
@@ -642,13 +630,19 @@ def fire_servo():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
+PREVIEW_MAX_WIDTH = 1280
+
+
 def gen_frames(camera_id):
     while True:
         if not cam_manager.is_open(camera_id):
             break
         frame = cam_manager.get_frame(camera_id)
         if frame is not None:
-            ret, buffer = cv2.imencode(".jpg", frame)
+            if frame.shape[1] > PREVIEW_MAX_WIDTH:
+                scale = PREVIEW_MAX_WIDTH / frame.shape[1]
+                frame = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
+            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
             if ret:
                 yield (
                     b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
@@ -732,6 +726,26 @@ def _apply_overlay_rect(frame, rect):
     return frame[y : y + rect_height, x : x + rect_width]
 
 
+def _enhance_frame(frame):
+    """Make small, low-contrast LCD digits easier to read: grayscale ->
+    local contrast boost (CLAHE) -> light denoise -> upscale -> sharpen.
+    Cannot add detail that the camera did not capture."""
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    gray = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(4, 4)).apply(gray)
+
+    longest = max(gray.shape[:2])
+    if longest < 600:  # denoise is slow on big images, and crops are small
+        gray = cv2.fastNlMeansDenoising(gray, None, h=10, templateWindowSize=5, searchWindowSize=15)
+
+    scale = 3 if longest < 300 else 2 if longest < 600 else 1
+    if scale > 1:
+        gray = cv2.resize(gray, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC)
+
+    blur = cv2.GaussianBlur(gray, (0, 0), 2.0)
+    gray = cv2.addWeighted(gray, 1.8, blur, -0.8, 0)
+    return cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR)
+
+
 def _capture_processed_frame(token):
     """Grab the current camera frame, apply this OTP's crop + invert, and save it
     to captures/latest.jpg. Returns the path, or None if there is no frame."""
@@ -748,6 +762,9 @@ def _capture_processed_frame(token):
         )
     if rect is not None and frame is not None:
         frame = _apply_overlay_rect(frame, rect)
+
+    if frame is not None and app_config.get("enhance", {}).get(str(token["servo"]), False):
+        frame = _enhance_frame(frame)
 
     if frame is not None and app_config.get("invert", {}).get(str(token["servo"]), False):
         frame = cv2.bitwise_not(frame)

@@ -22,10 +22,10 @@ function otpPanel() {
         angles: {},
         reTriggers: {},
         inverts: {},
+        enhances: {},
         overlayRects: {},
         cameras: { left: 0, right: 1 },
         captureDelay: 1000,
-        resolution: 'default',
         captureSize: '',
         camOpen: { left: true, right: true },
         camSrc: { left: '', right: '' },
@@ -117,11 +117,10 @@ function otpPanel() {
             this.angles = { ...data.angles };
             this.reTriggers = { ...(data.re_trigger || {}) };
             this.inverts = { ...(data.invert || {}) };
+            this.enhances = { ...(data.enhance || {}) };
             this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
             this.cameras = { ...data.cameras };
-            const cr = data.camera_resolution;
-            this.resolution = cr ? `${cr.width}x${cr.height}` : 'default';
             const ids = (Array.isArray(data.servo_ids) && data.servo_ids.length
                 ? data.servo_ids
                 : Array.from({ length: data.servo_count ?? Object.keys(data.angles).length }, (_, i) => i + 1)
@@ -196,6 +195,7 @@ function otpPanel() {
             this.angles[id] = 180;
             this.reTriggers[id] = false;
             this.inverts[id] = false;
+            this.enhances[id] = false;
             this.tokens.push({ id, displayName: '', aliasString: '' });
             this.tokens.sort((a, b) => a.id - b.id);
             this.servoCount = this.tokens.length;
@@ -223,6 +223,7 @@ function otpPanel() {
             this.angles = { ...cfg.angles };
             this.reTriggers = { ...(cfg.re_trigger || {}) };
             this.inverts = { ...(cfg.invert || {}) };
+            this.enhances = { ...(cfg.enhance || {}) };
             this.overlayRects = { ...(cfg.overlay_rects || {}) };
             const meta = cfg.servo_meta || {};
             const savedSides = cfg.servo_sides || {};
@@ -334,6 +335,12 @@ function otpPanel() {
         onReTriggerChange(e, id) {
             this.reTriggers[id] = e.target.checked;
             this.post('/set_re_trigger', { servo: id, re_trigger: e.target.checked });
+        },
+
+        // ── enhance ────────────────────────────────────────────────
+        onEnhanceChange(e, id) {
+            this.enhances[id] = e.target.checked;
+            this.post('/set_enhance', { servo: id, enhance: e.target.checked });
         },
 
         // ── invert colors ──────────────────────────────────────────
@@ -546,19 +553,6 @@ function otpPanel() {
             input.classList.remove('invalid');
             this.captureDelay = v;
             this.post('/set_capture_delay', { delay_ms: v });
-        },
-
-        async saveResolution(value) {
-            this.resolution = value;
-            const res = await this.post('/set_resolution', { resolution: value });
-            if (!res.ok) {
-                alert('Failed to set resolution');
-                return;
-            }
-            // cameras were reopened on the server, so restart the live streams
-            this.SIDES.forEach(side => {
-                if (this.camOpen[side]) this.openCamera(side, this.cameras[side]);
-            });
         },
 
         reloadCapture() {
