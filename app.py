@@ -52,7 +52,7 @@ DEFAULT_CONFIG = {
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
-    "camera_resolution": {"width": 3840, "height": 2160},
+    "camera_size": {"width": 3840, "height": 2160},
     "prompt_template": "",
     "models_config": [
         {"model": "gemini-3.1-flash-lite", "priority": True},
@@ -196,11 +196,12 @@ save_config(app_config)
 
 
 def _configure_capture(cap, cam_id=None):
-    """Ask the camera for the saved resolution (null in config.json = leave it alone).
+    """Ask the camera for the saved resolution ("camera_size" in config.json; null = leave it alone).
     MJPG is requested because USB webcams usually only offer 1080p/4K in MJPG.
     If the camera can't do it, the driver falls back to the closest mode it has."""
-    res = app_config.get("camera_resolution")
+    res = app_config.get("camera_size")
     if not res:
+        print(f"[camera {cam_id}] camera_size is null in config.json -> using the camera's default resolution")
         return
     try:
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
