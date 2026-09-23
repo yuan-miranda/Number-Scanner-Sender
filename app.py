@@ -59,6 +59,12 @@ DEFAULT_CONFIG = {
         {"model": "gemini-3.5-flash", "priority": True},
     ],
 }
+RESOLUTIONS = {
+    "default": None,
+    "640x480": (640, 480),
+    "1280x720": (1280, 720),
+    "1920x1080": (1920, 1080),
+}
 VALID_SIDES = {"left", "right"}
 VALID_SERVOS: set[str] = set()
 MAX_SERVOS = 16
@@ -73,6 +79,21 @@ def _servo_ids(count: int) -> list[str]:
     return [str(i) for i in range(1, count + 1)]
 
 
+def _valid_resolution(res):
+    """Only resolutions from RESOLUTIONS are allowed (None = camera default).
+    Anything else in config.json (e.g. 3840x2160) falls back to 640x480."""
+    if res is None:
+        return None
+    try:
+        size = (int(res["width"]), int(res["height"]))
+    except (TypeError, KeyError, ValueError):
+        size = None
+    if size is not None and size in RESOLUTIONS.values():
+        return {"width": size[0], "height": size[1]}
+    logging.warning("camera_resolution %s is not an allowed size; using 640x480", res)
+    return {"width": 640, "height": 480}
+
+
 def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
@@ -82,6 +103,7 @@ def load_config():
                 if key not in data:
                     data[key] = val
             data.pop("camera_size", None)  # old 4K setting, no longer used
+            data["camera_resolution"] = _valid_resolution(data.get("camera_resolution"))
             return data
         except Exception:
             pass
@@ -579,14 +601,6 @@ def set_models_config():
     app_config["models_config"] = models_config
     save_config(app_config)
     return jsonify({"status": "ok"})
-
-
-RESOLUTIONS = {
-    "default": None,
-    "640x480": (640, 480),
-    "1280x720": (1280, 720),
-    "1920x1080": (1920, 1080),
-}
 
 
 @app.route("/set_resolution", methods=["POST"])
