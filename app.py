@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import logging
 import os
 import json
@@ -17,7 +18,7 @@ from flask import (
     send_from_directory,
 )
 from dotenv import load_dotenv
-from gemini import get_extracted_otps, DEFAULT_PROMPT_TEMPLATE, render_prompt
+from gemini import get_extracted_otps, DEFAULT_PROMPT_TEMPLATE
 from telethon import TelegramClient, events
 
 load_dotenv()
@@ -52,19 +53,13 @@ DEFAULT_CONFIG = {
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
-    "camera_resolution": {"width": 640, "height": 480},
     "prompt_template": "",
     "models_config": [
         {"model": "gemini-3.1-flash-lite", "priority": True},
         {"model": "gemini-3.5-flash", "priority": True},
     ],
 }
-RESOLUTIONS = {
-    "default": None,
-    "640x480": (640, 480),
-    "1280x720": (1280, 720),
-    "1920x1080": (1920, 1080),
-}
+CAMERA_WIDTH, CAMERA_HEIGHT = 640, 480  # capture size is fixed
 VALID_SIDES = {"left", "right"}
 VALID_SERVOS: set[str] = set()
 MAX_SERVOS = 16
@@ -79,45 +74,38 @@ def _servo_ids(count: int) -> list[str]:
     return [str(i) for i in range(1, count + 1)]
 
 
-def _valid_resolution(res):
-    """Only resolutions from RESOLUTIONS are allowed (None = camera default).
-    Anything else in config.json (e.g. 3840x2160) falls back to 640x480."""
-    if res is None:
-        return None
-    try:
-        size = (int(res["width"]), int(res["height"]))
-    except (TypeError, KeyError, ValueError):
-        size = None
-    if size is not None and size in RESOLUTIONS.values():
-        return {"width": size[0], "height": size[1]}
-    logging.warning("camera_resolution %s is not an allowed size; using 640x480", res)
-    return {"width": 640, "height": 480}
-
-
 def load_config():
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r") as f:
                 data = json.load(f)
             for key, val in DEFAULT_CONFIG.items():
-                if key not in data:
-                    data[key] = val
-            data.pop("camera_size", None)  # old 4K setting, no longer used
-            data["camera_resolution"] = _valid_resolution(data.get("camera_resolution"))
+                data.setdefault(key, copy.deepcopy(val))
+            # resolution is fixed now; drop the old saved settings
+            data.pop("camera_size", None)
+            data.pop("camera_resolution", None)
             return data
         except Exception:
-            pass
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(DEFAULT_CONFIG, f, indent=4)
-    return DEFAULT_CONFIG.copy()
+            logging.exception("Could not read %s; starting from defaults", CONFIG_FILE)
+    data = copy.deepcopy(DEFAULT_CONFIG)
+    save_config(data)
+    return data
+
+
+_config_lock = threading.Lock()
 
 
 def save_config(config_dict):
+    """Write via a temp file + rename so a crash (or two requests at once)
+    can't leave a half-written config.json."""
     try:
-        with open(CONFIG_FILE, "w") as f:
-            json.dump(config_dict, f, indent=4)
+        with _config_lock:
+            tmp = CONFIG_FILE + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(config_dict, f, indent=4)
+            os.replace(tmp, CONFIG_FILE)
     except Exception:
-        pass
+        logging.exception("Could not save %s", CONFIG_FILE)
 
 
 def ensure_servo_slots(config_dict, servo_ids: list[str]):
@@ -146,28 +134,6 @@ def normalize_overlay_rect(raw_rect):
         return None
 
     return {"x": round(x, 2), "y": round(y, 2), "width": round(width, 2), "height": round(height, 2)}
-
-
-def build_overlay_rects(config_dict, servo_ids) -> dict[str, dict]:
-    lookup: dict[str, dict] = {}
-    overlay_rects = config_dict.get("overlay_rects", {}) or {}
-    servo_meta = config_dict.get("servo_meta", {}) or {}
-    for sid in servo_ids:
-        servo_key = str(sid)
-        rect = normalize_overlay_rect(overlay_rects.get(servo_key))
-        if rect is None:
-            rect = {"x": 0, "y": 0, "width": 100, "height": 100}
-        meta = servo_meta.get(servo_key, {}) or {}
-        name = str(meta.get("name", "") or "").strip()
-        aliases = [str(a).strip() for a in meta.get("aliases", []) if str(a).strip()]
-        labels = []
-        if name:
-            labels.append(name)
-        labels.extend(aliases)
-        labels.append(f"servo{sid}")
-        for label in labels:
-            lookup[re.sub(r"[^a-z0-9]", "", label.lower())] = rect
-    return lookup
 
 
 app_config = load_config()
@@ -219,23 +185,23 @@ save_config(app_config)
 
 
 def _configure_capture(cap, cam_id=None):
-    """Apply the saved resolution ("camera_resolution" in config.json; null = leave
-    the camera at its default). MJPG is requested too: many USB webcams only
-    offer 720p/1080p in MJPG. If the camera can't do it, the driver falls back
-    to the closest mode it has."""
-    res = app_config.get("camera_resolution")
-    if not res:
-        print(f"[camera {cam_id}] camera_resolution is null -> using the camera's default resolution")
-        return
+    """Lock the camera to 640x480. MJPG keeps two USB cameras within bandwidth.
+    If a camera can't do 640x480 the driver picks its closest mode, so warn."""
     try:
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(res["width"]))
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(res["height"]))
-        got_w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-        got_h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-        print(f"[camera {cam_id}] asked for {res['width']}x{res['height']}, camera reports {got_w}x{got_h}")
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH, CAMERA_WIDTH)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, CAMERA_HEIGHT)
+        got = (
+            int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        )
+        if got != (CAMERA_WIDTH, CAMERA_HEIGHT):
+            logging.warning(
+                "[camera %s] wanted %dx%d but it reports %dx%d",
+                cam_id, CAMERA_WIDTH, CAMERA_HEIGHT, *got,
+            )
     except Exception:
-        logging.exception("Could not apply camera resolution %s", res)
+        logging.exception("Could not configure camera %s", cam_id)
 
 
 class CameraManager:
@@ -247,21 +213,25 @@ class CameraManager:
         self.thread = threading.Thread(target=self._capture_loop, daemon=True)
         self.thread.start()
 
-    def open_camera(self, cam_id):
-        cam_id = int(cam_id)
-        with self.lock:
-            if cam_id in self.cameras:
-                if self.cameras[cam_id].isOpened():
-                    return True
-                self.cameras[cam_id].release()
-                del self.cameras[cam_id]
-            cap = cv2.VideoCapture(cam_id)
+    def _open_locked(self, cam_id):
+        """Open cam_id if it isn't already. Caller must hold self.lock."""
+        cap = self.cameras.get(cam_id)
+        if cap is not None:
             if cap.isOpened():
-                _configure_capture(cap, cam_id)
-                self.cameras[cam_id] = cap
                 return True
             cap.release()
-            return False
+            del self.cameras[cam_id]
+        cap = cv2.VideoCapture(cam_id)
+        if cap.isOpened():
+            _configure_capture(cap, cam_id)
+            self.cameras[cam_id] = cap
+            return True
+        cap.release()
+        return False
+
+    def open_camera(self, cam_id):
+        with self.lock:
+            return self._open_locked(int(cam_id))
 
     def release_camera(self, cam_id):
         cam_id = int(cam_id)
@@ -274,20 +244,8 @@ class CameraManager:
     def get_frame(self, cam_id):
         cam_id = int(cam_id)
         with self.lock:
-            if cam_id not in self.cameras:
-                cap = cv2.VideoCapture(cam_id)
-                if cap.isOpened():
-                    _configure_capture(cap, cam_id)
-                    self.cameras[cam_id] = cap
+            self._open_locked(cam_id)
         return self.latest_frames.get(cam_id)
-
-    def reconfigure_all(self):
-        """Reopen every open camera so a new resolution takes effect."""
-        with self.lock:
-            cam_ids = list(self.cameras.keys())
-        for cam_id in cam_ids:
-            self.release_camera(cam_id)
-            self.open_camera(cam_id)
 
     def is_open(self, cam_id):
         cam_id = int(cam_id)
@@ -603,22 +561,6 @@ def set_models_config():
     return jsonify({"status": "ok"})
 
 
-@app.route("/set_resolution", methods=["POST"])
-def set_resolution():
-    data = request.get_json(silent=True) or {}
-    key = str(data.get("resolution", "default"))
-    if key not in RESOLUTIONS:
-        return jsonify({"status": "error", "message": "Unknown resolution"}), 400
-
-    size = RESOLUTIONS[key]
-    app_config["camera_resolution"] = (
-        {"width": size[0], "height": size[1]} if size else None
-    )
-    save_config(app_config)
-    cam_manager.reconfigure_all()
-    return jsonify({"status": "ok"})
-
-
 @app.route("/set_camera", methods=["POST"])
 def set_camera():
     data = request.get_json()
@@ -679,20 +621,14 @@ def fire_servo():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 
-PREVIEW_MAX_WIDTH = 1280
-
-
 def gen_frames(camera_id):
-    while True:
-        if not cam_manager.is_open(camera_id):
-            break
+    last = None
+    while cam_manager.is_open(camera_id):
         frame = cam_manager.get_frame(camera_id)
-        if frame is not None:
-            if frame.shape[1] > PREVIEW_MAX_WIDTH:
-                scale = PREVIEW_MAX_WIDTH / frame.shape[1]
-                frame = cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
-            ret, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
-            if ret:
+        if frame is not None and frame is not last:
+            last = frame
+            ok, buffer = cv2.imencode(".jpg", frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+            if ok:
                 yield (
                     b"--frame\r\nContent-Type: image/jpeg\r\n\r\n"
                     + buffer.tobytes()
@@ -796,34 +732,25 @@ def _enhance_frame(frame):
 
 
 def _capture_processed_frame(token):
-    """Grab the current camera frame, apply this OTP's crop + invert, and save it
-    to captures/latest.jpg. Returns the path, or None if there is no frame."""
+    """Grab the current camera frame, apply this OTP's crop, enhance and invert,
+    and save it to captures/latest.jpg. Returns the path, or None if there is no frame."""
     camera_index = int(app_config["cameras"][token["camera"]])
     frame = cam_manager.get_frame(camera_index)
+    if frame is None:
+        return None
 
-    overlay_lookup = build_overlay_rects(app_config, active_servo_ids())
-    rect = None
-    if token.get("key"):
-        rect = overlay_lookup.get(token["key"])
-    if rect is None:
-        rect = normalize_overlay_rect(
-            app_config.get("overlay_rects", {}).get(str(token["servo"]))
-        )
-    if rect is not None and frame is not None:
+    servo = str(token["servo"])
+    rect = normalize_overlay_rect(app_config.get("overlay_rects", {}).get(servo))
+    if rect is not None:
         frame = _apply_overlay_rect(frame, rect)
-
-    if frame is not None and app_config.get("enhance", {}).get(str(token["servo"]), False):
+    if app_config.get("enhance", {}).get(servo, False):
         frame = _enhance_frame(frame)
-
-    if frame is not None and app_config.get("invert", {}).get(str(token["servo"]), False):
+    if app_config.get("invert", {}).get(servo, False):
         frame = cv2.bitwise_not(frame)
 
     os.makedirs("captures", exist_ok=True)
     image_path = "captures/latest.jpg"
-    if frame is not None:
-        cv2.imwrite(image_path, frame)
-    else:
-        image_path = None
+    cv2.imwrite(image_path, frame)
     return image_path
 
 
@@ -871,7 +798,7 @@ group_chat_id = int(os.getenv("GROUP_CHAT_ID"))
 
 async def trigger_servo(servo_number):
     angle = app_config["angles"].get(str(servo_number), 180)
-    url = f"http://localhost:5000/fire_servo?servo={servo_number}&angle={angle}"
+    url = f"http://{ESP32_IP}/activate?servo={servo_number}&angle={angle}"
     async with httpx.AsyncClient() as http_client:
         try:
             response = await http_client.get(url, timeout=10.0)

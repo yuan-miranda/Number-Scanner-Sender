@@ -26,8 +26,6 @@ function otpPanel() {
         overlayRects: {},
         cameras: { left: 0, right: 1 },
         captureDelay: 1000,
-        cameraRes: '640x480',
-        savedCameraRes: '640x480',
         captureSize: '',
         camOpen: { left: true, right: true },
         camSrc: { left: '', right: '' },
@@ -122,10 +120,6 @@ function otpPanel() {
             this.enhances = { ...(data.enhance || {}) };
             this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
-            const res = data.camera_resolution;
-            const resKey = res ? `${res.width}x${res.height}` : 'default';
-            this.cameraRes = this.savedCameraRes =
-                ['default', '640x480', '1280x720', '1920x1080'].includes(resKey) ? resKey : '640x480';
             this.cameras = { ...data.cameras };
             const ids = (Array.isArray(data.servo_ids) && data.servo_ids.length
                 ? data.servo_ids
@@ -540,21 +534,6 @@ function otpPanel() {
                     if (el !== e.target && el.open) el.open = false;
                 });
             }
-        },
-
-        // ── resolution ─────────────────────────────────────────────
-        async saveResolution() {
-            const res = await this.post('/set_resolution', { resolution: this.cameraRes });
-            if (!res.ok) {
-                alert('Could not change resolution');
-                this.cameraRes = this.savedCameraRes;
-                return;
-            }
-            this.savedCameraRes = this.cameraRes;
-            // the server reopened the cameras, so restart the live feeds that were open
-            this.SIDES.forEach(side => {
-                if (this.camOpen[side]) this.openCamera(side, this.cameras[side]);
-            });
         },
 
         // ── delay ──────────────────────────────────────────────────
