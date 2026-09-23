@@ -52,7 +52,7 @@ DEFAULT_CONFIG = {
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
-    "camera_size": {"width": 3840, "height": 2160},
+    "camera_resolution": {"width": 640, "height": 480},
     "prompt_template": "",
     "models_config": [
         {"model": "gemini-3.1-flash-lite", "priority": True},
@@ -81,6 +81,7 @@ def load_config():
             for key, val in DEFAULT_CONFIG.items():
                 if key not in data:
                     data[key] = val
+            data.pop("camera_size", None)  # old 4K setting, no longer used
             return data
         except Exception:
             pass
@@ -196,12 +197,13 @@ save_config(app_config)
 
 
 def _configure_capture(cap, cam_id=None):
-    """Ask the camera for the saved resolution ("camera_size" in config.json; null = leave it alone).
-    MJPG is requested because USB webcams usually only offer 1080p/4K in MJPG.
-    If the camera can't do it, the driver falls back to the closest mode it has."""
-    res = app_config.get("camera_size")
+    """Apply the saved resolution ("camera_resolution" in config.json; null = leave
+    the camera at its default). MJPG is requested too: many USB webcams only
+    offer 720p/1080p in MJPG. If the camera can't do it, the driver falls back
+    to the closest mode it has."""
+    res = app_config.get("camera_resolution")
     if not res:
-        print(f"[camera {cam_id}] camera_size is null in config.json -> using the camera's default resolution")
+        print(f"[camera {cam_id}] camera_resolution is null -> using the camera's default resolution")
         return
     try:
         cap.set(cv2.CAP_PROP_FOURCC, cv2.VideoWriter_fourcc(*"MJPG"))
@@ -256,6 +258,14 @@ class CameraManager:
                     _configure_capture(cap, cam_id)
                     self.cameras[cam_id] = cap
         return self.latest_frames.get(cam_id)
+
+    def reconfigure_all(self):
+        """Reopen every open camera so a new resolution takes effect."""
+        with self.lock:
+            cam_ids = list(self.cameras.keys())
+        for cam_id in cam_ids:
+            self.release_camera(cam_id)
+            self.open_camera(cam_id)
 
     def is_open(self, cam_id):
         cam_id = int(cam_id)
@@ -568,6 +578,30 @@ def set_models_config():
 
     app_config["models_config"] = models_config
     save_config(app_config)
+    return jsonify({"status": "ok"})
+
+
+RESOLUTIONS = {
+    "default": None,
+    "640x480": (640, 480),
+    "1280x720": (1280, 720),
+    "1920x1080": (1920, 1080),
+}
+
+
+@app.route("/set_resolution", methods=["POST"])
+def set_resolution():
+    data = request.get_json(silent=True) or {}
+    key = str(data.get("resolution", "default"))
+    if key not in RESOLUTIONS:
+        return jsonify({"status": "error", "message": "Unknown resolution"}), 400
+
+    size = RESOLUTIONS[key]
+    app_config["camera_resolution"] = (
+        {"width": size[0], "height": size[1]} if size else None
+    )
+    save_config(app_config)
+    cam_manager.reconfigure_all()
     return jsonify({"status": "ok"})
 
 
