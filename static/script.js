@@ -26,6 +26,10 @@ function otpPanel() {
         overlayRects: {},
         cameras: { left: 0, right: 1 },
         captureDelay: 1000,
+        esp32Ip: '',
+        newEsp32Ip: '',
+        esp32Online: false,
+        esp32Scanning: false,
         captureSize: '',
         camOpen: { left: true, right: true },
         camSrc: { left: '', right: '' },
@@ -121,6 +125,9 @@ function otpPanel() {
             this.overlayRects = { ...(data.overlay_rects || {}) };
             this.captureDelay = data.capture_delay_ms ?? 1000;
             this.cameras = { ...data.cameras };
+            this.esp32Ip = data.esp32_ip || '';
+            this.newEsp32Ip = this.esp32Ip;
+            this.checkEsp32Status();
             const ids = (Array.isArray(data.servo_ids) && data.servo_ids.length
                 ? data.servo_ids
                 : Array.from({ length: data.servo_count ?? Object.keys(data.angles).length }, (_, i) => i + 1)
@@ -282,11 +289,20 @@ function otpPanel() {
             return true;
         },
 
-        testServo(el, id) {
+        async testServo(el, id) {
             const input = el.closest('.servo-controls').querySelector('input[type=number]');
             const v = Number(input.value);
-            if (this.isAngleValid(v))
-                fetch(`/fire_servo?servo=${id}&angle=${v}`);
+            if (this.isAngleValid(v)) {
+                try {
+                    const res = await fetch(`/fire_servo?servo=${id}&angle=${v}`);
+                    const json = await res.json();
+                    if (!res.ok) {
+                        alert(json.message || 'Failed to trigger servo');
+                    }
+                } catch (e) {
+                    alert('Error connecting to server/ESP32: ' + e.message);
+                }
+            }
         },
 
         // ── name ───────────────────────────────────────────────────
@@ -708,6 +724,76 @@ function otpPanel() {
                 if (!this.config) this.config = {};
                 this.config.models_config = JSON.parse(JSON.stringify(this.localModelsConfig));
                 this.checkModelsDirty();
+            }
+        },
+
+        // ── ESP32 Controller ───────────────────────────────────────
+        async checkEsp32Status() {
+            try {
+                const res = await fetch('/get_esp32_status');
+                if (res.ok) {
+                    const data = await res.json();
+                    this.esp32Online = Boolean(data.online);
+                    if (data.ip) {
+                        this.esp32Ip = data.ip;
+                        this.newEsp32Ip = data.ip;
+                    }
+                }
+            } catch {
+                this.esp32Online = false;
+            }
+        },
+
+        esp32StatusText() {
+            if (this.esp32Scanning) return 'Scanning...';
+            return this.esp32Online ? 'Online' : 'Offline';
+        },
+
+        esp32StatusClass() {
+            if (this.esp32Scanning) return 'status-scanning';
+            return this.esp32Online ? 'status-online' : 'status-offline';
+        },
+
+        async saveEsp32Ip(ip) {
+            if (!ip || !ip.trim()) return;
+            try {
+                const res = await this.post('/set_esp32_ip', { ip: ip.trim() });
+                if (res.ok) {
+                    const data = await res.json();
+                    this.esp32Ip = data.ip;
+                    this.newEsp32Ip = data.ip;
+                    this.esp32Online = data.online;
+                    await this.loadConfig();
+                    if (!data.online) {
+                        alert(`ESP32 IP set to ${data.ip}, but the device did not respond. Check that it is powered on and connected to the same Wi-Fi.`);
+                    }
+                } else {
+                    alert('Could not update ESP32 IP');
+                }
+            } catch (err) {
+                alert('Error updating ESP32 IP: ' + err.message);
+            }
+        },
+
+        async scanEsp32() {
+            this.esp32Scanning = true;
+            try {
+                const res = await this.post('/scan_esp32', {});
+                const data = await res.json();
+                if (res.ok && data.status === 'ok') {
+                    this.esp32Ip = data.ip;
+                    this.newEsp32Ip = data.ip;
+                    this.esp32Online = true;
+                    await this.loadConfig();
+                    alert(`ESP32 found at ${data.ip}!`);
+                } else {
+                    alert('ESP32 was not found on your local network. Make sure the ESP32 is powered on and connected to Wi-Fi.');
+                }
+            } catch (err) {
+                alert('Scan failed: ' + err.message);
+            } finally {
+                this.esp32Scanning = false;
+                await this.checkEsp32Status();
             }
         },
     };

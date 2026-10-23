@@ -948,3 +948,54 @@ button.btn-set:disabled {
     cursor: not-allowed;
     pointer-events: none;
 }
+
+/* ── ESP32 Controller Status ── */
+.esp32-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 6px;
+}
+
+.esp32-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 8px;
+    border-radius: 9999px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+}
+
+.esp32-badge.status-online {
+    color: #10b981;
+    border-color: rgba(16, 185, 129, 0.3);
+}
+
+.esp32-badge.status-offline {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.3);
+}
+
+.esp32-badge.status-scanning {
+    color: #f59e0b;
+    border-color: rgba(245, 158, 11, 0.3);
+}
+
+.esp32-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+}
+
+.esp32-badge.status-scanning .esp32-dot {
+    animation: esp32-pulse 1s infinite alternate;
+}
+
+@keyframes esp32-pulse {
+    0% { opacity: 0.3; }
+    100% { opacity: 1; }
+}

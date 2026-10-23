@@ -1,9 +1,11 @@
 import asyncio
+import concurrent.futures
 import copy
 import logging
 import os
 import json
 import re
+import socket
 import threading
 import time
 import cv2
@@ -39,17 +41,19 @@ logging.getLogger("werkzeug").addFilter(SilenceRoutes())
 # ── app setup ──────────────────────────────────────────────────────────────────
 
 app = Flask(__name__)
-ESP32_IP = os.getenv("ESP32_IP")
 CONFIG_FILE = "config.json"
+DEFAULT_SERVO_COUNT = 6
 
 DEFAULT_CONFIG = {
+    "esp32_ip": os.getenv("ESP32_IP") or "192.168.1.20",
+    "servo_count": 6,
+    "servo_ids": ["1", "2", "3", "4", "5", "6"],
     "angles": {},
     "re_trigger": {},
     "invert": {},
     "enhance": {},
     "servo_meta": {},
     "servo_sides": {},
-    "servo_ids": None,
     "overlay_rects": {},
     "cameras": {"left": 0, "right": 1},
     "capture_delay_ms": 1000,
@@ -139,17 +143,81 @@ def normalize_overlay_rect(raw_rect):
 app_config = load_config()
 
 
+def get_esp32_ip() -> str:
+    return str(app_config.get("esp32_ip") or os.getenv("ESP32_IP") or "192.168.1.20").strip()
+
+
+ESP32_IP = get_esp32_ip()
+
+
+def set_esp32_ip(ip: str):
+    global ESP32_IP
+    ip = ip.strip()
+    ESP32_IP = ip
+    app_config["esp32_ip"] = ip
+    save_config(app_config)
+
+
+def discover_esp32(timeout: float = 0.8) -> str | None:
+    """Scan local subnet for an ESP32 answering /servo_count."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        local_ip = s.getsockname()[0]
+        s.close()
+    except Exception:
+        local_ip = "192.168.1.8"
+
+    prefix = ".".join(local_ip.split(".")[:3])
+    candidates = [f"{prefix}.{i}" for i in range(1, 255)]
+    current = get_esp32_ip()
+    if current in candidates:
+        candidates.remove(current)
+        candidates.insert(0, current)
+
+    def probe(ip):
+        try:
+            with httpx.Client(timeout=timeout) as client:
+                r = client.get(f"http://{ip}/servo_count")
+                if r.status_code == 200 and "count" in r.json():
+                    return ip
+        except Exception:
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=35) as pool:
+        for found in pool.map(probe, candidates):
+            if found:
+                return found
+    return None
+
+
 # ── fetch servo count from ESP32 ───────────────────────────────────────────────
 
 
-def fetch_servo_count() -> int | None:
+def fetch_servo_count(target_ip: str | None = None, auto_discover: bool = False) -> int | None:
+    ip = target_ip or get_esp32_ip()
     try:
         with httpx.Client() as client:
-            resp = client.get(f"http://{ESP32_IP}/servo_count", timeout=5.0)
-            return int(resp.json()["count"])
+            resp = client.get(f"http://{ip}/servo_count", timeout=2.0)
+            if resp.status_code == 200:
+                return int(resp.json()["count"])
     except Exception as exc:
-        logging.warning("Could not fetch servo count from ESP32 (%s)", exc)
-        return None
+        logging.warning("Could not fetch servo count from ESP32 at %s (%s)", ip, exc)
+
+    if auto_discover:
+        logging.info("Searching local subnet for ESP32...")
+        found_ip = discover_esp32(timeout=0.8)
+        if found_ip:
+            logging.info("Auto-discovered ESP32 at %s", found_ip)
+            set_esp32_ip(found_ip)
+            try:
+                with httpx.Client() as client:
+                    resp = client.get(f"http://{found_ip}/servo_count", timeout=2.0)
+                    if resp.status_code == 200:
+                        return int(resp.json()["count"])
+            except Exception:
+                pass
+    return None
 
 
 def apply_servo_ids(ids):
@@ -165,19 +233,31 @@ def active_servo_ids() -> list[str]:
     return sorted(VALID_SERVOS, key=int)
 
 
-# Ids saved from the UI (Add/Delete OTP) are authoritative. Configs from the
-# previous version only have a servo_count, so those become ids 1..count.
-# With nothing saved yet, use what the ESP32 reports (else 5).
+# Startup servo IDs determination:
 _saved_ids = app_config.get("servo_ids")
-if _saved_ids:
-    _start_ids = [str(i) for i in _saved_ids]
-else:
-    _start_count = int(app_config.get("servo_count") or 0) or (fetch_servo_count() or 0)
-    if _start_count == 0:
-        logging.warning("No servo count from ESP32 or config; defaulting to 5")
-        _start_count = 5
+_saved_count = int(app_config.get("servo_count") or 0)
+_esp_count = fetch_servo_count(auto_discover=False)
+
+if _esp_count and _esp_count > 0:
+    _start_count = max(_esp_count, _saved_count, len(_saved_ids or []))
     _start_ids = _servo_ids(_start_count)
+elif _saved_ids:
+    _start_ids = [str(i) for i in _saved_ids]
+    _start_count = max(_saved_count, len(_start_ids))
+    if _start_count > len(_start_ids):
+        for i in range(1, _start_count + 1):
+            if str(i) not in _start_ids:
+                _start_ids.append(str(i))
+        _start_ids = sorted(_start_ids, key=int)
+elif _saved_count > 0:
+    _start_ids = _servo_ids(_saved_count)
+else:
+    logging.warning("No servo count from ESP32 or config; defaulting to %d", DEFAULT_SERVO_COUNT)
+    _start_ids = _servo_ids(DEFAULT_SERVO_COUNT)
+
 apply_servo_ids(_start_ids)
+app_config["servo_ids"] = active_servo_ids()
+app_config["servo_count"] = len(VALID_SERVOS)
 save_config(app_config)
 
 
@@ -289,6 +369,7 @@ def get_capture(filename):
 @app.route("/get_config")
 def get_config():
     payload = dict(app_config)
+    payload["esp32_ip"] = get_esp32_ip()
     payload["servo_ids"] = [int(s) for s in active_servo_ids()]
     payload["servo_count"] = len(VALID_SERVOS)
     return jsonify(payload)
@@ -297,6 +378,67 @@ def get_config():
 @app.route("/servo_count")
 def servo_count_route():
     return jsonify({"count": len(VALID_SERVOS)})
+
+
+@app.route("/get_esp32_status")
+def get_esp32_status():
+    ip = get_esp32_ip()
+    count = fetch_servo_count(ip, auto_discover=False)
+    return jsonify({
+        "status": "ok",
+        "ip": ip,
+        "online": count is not None,
+        "servo_count": count,
+    })
+
+
+@app.route("/set_esp32_ip", methods=["POST"])
+def set_esp32_ip_route():
+    data = request.get_json(silent=True) or {}
+    ip = str(data.get("ip", "")).strip()
+    if not ip:
+        return jsonify({"status": "error", "message": "IP address is required"}), 400
+    set_esp32_ip(ip)
+    count = fetch_servo_count(ip, auto_discover=False)
+    if count is not None and count > len(VALID_SERVOS):
+        ids = active_servo_ids()
+        for i in range(1, count + 1):
+            if str(i) not in ids:
+                ids.append(str(i))
+        apply_servo_ids(ids)
+        app_config["servo_ids"] = active_servo_ids()
+        app_config["servo_count"] = len(VALID_SERVOS)
+        save_config(app_config)
+    return jsonify({
+        "status": "ok",
+        "ip": ip,
+        "online": count is not None,
+        "servo_count": count or len(VALID_SERVOS),
+    })
+
+
+@app.route("/scan_esp32", methods=["POST"])
+def scan_esp32_route():
+    found_ip = discover_esp32(timeout=0.8)
+    if not found_ip:
+        return jsonify({"status": "not_found", "message": "ESP32 not found on local network"}), 404
+    set_esp32_ip(found_ip)
+    count = fetch_servo_count(found_ip, auto_discover=False)
+    if count is not None and count > len(VALID_SERVOS):
+        ids = active_servo_ids()
+        for i in range(1, count + 1):
+            if str(i) not in ids:
+                ids.append(str(i))
+        apply_servo_ids(ids)
+        app_config["servo_ids"] = active_servo_ids()
+        app_config["servo_count"] = len(VALID_SERVOS)
+        save_config(app_config)
+    return jsonify({
+        "status": "ok",
+        "ip": found_ip,
+        "online": True,
+        "servo_count": count or len(VALID_SERVOS),
+    })
 
 
 @app.route("/set_angle", methods=["POST"])
@@ -612,13 +754,14 @@ def fire_servo():
             400,
         )
 
-    url = f"http://{ESP32_IP}/activate?servo={servo}&angle={angle}"
+    ip = get_esp32_ip()
+    url = f"http://{ip}/activate?servo={servo}&angle={angle}"
     try:
         with httpx.Client() as client:
-            resp = client.get(url, timeout=10.0)
+            resp = client.get(url, timeout=5.0)
             return jsonify({"status": "ok", "esp32_status": resp.status_code})
     except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        return jsonify({"status": "error", "message": f"Could not reach ESP32 at {ip}: {e}"}), 500
 
 
 def gen_frames(camera_id):
@@ -798,13 +941,14 @@ group_chat_id = int(os.getenv("GROUP_CHAT_ID"))
 
 async def trigger_servo(servo_number):
     angle = app_config["angles"].get(str(servo_number), 180)
-    url = f"http://{ESP32_IP}/activate?servo={servo_number}&angle={angle}"
+    ip = get_esp32_ip()
+    url = f"http://{ip}/activate?servo={servo_number}&angle={angle}"
     async with httpx.AsyncClient() as http_client:
         try:
-            response = await http_client.get(url, timeout=10.0)
+            response = await http_client.get(url, timeout=5.0)
             return response.status_code == 200
         except Exception:
-            logging.exception("Failed to trigger servo %s", servo_number)
+            logging.exception("Failed to trigger servo %s at %s", servo_number, ip)
             return False
 
 

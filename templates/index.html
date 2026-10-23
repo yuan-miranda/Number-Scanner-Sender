@@ -170,6 +170,28 @@
 
             <hr class="section-divider">
 
+            <div class="esp32-header">
+                <h2 style="margin: 0;">ESP32 Controller</h2>
+                <div class="esp32-badge" :class="esp32StatusClass()" :title="'ESP32 Status: ' + esp32StatusText()">
+                    <span class="esp32-dot"></span>
+                    <span x-text="esp32StatusText()"></span>
+                </div>
+            </div>
+
+            <div class="servo-field cam-field" x-data="{ dirty: false }">
+                <div class="field-label">ESP32 IP Address</div>
+                <div class="servo-controls">
+                    <input type="text" :value="esp32Ip" style="flex: 1; min-width: 0;"
+                        @input="dirty = $el.value.trim() !== esp32Ip; newEsp32Ip = $el.value.trim()">
+                    <button class="btn-set" :class="{'btn-dirty': dirty}"
+                        @click="saveEsp32Ip(newEsp32Ip); dirty = false">Set</button>
+                    <button class="btn-set" :disabled="esp32Scanning"
+                        @click="scanEsp32()" x-text="esp32Scanning ? '...' : 'Scan'"></button>
+                </div>
+            </div>
+
+            <hr class="section-divider">
+
             <div class="servo-details prompt-menu-container" style="margin-bottom: 0;" :class="{'is-open': promptOpen}">
                 <div class="servo-summary" @click="togglePromptEditor()">
                     <div style="display: flex; align-items: center;">
